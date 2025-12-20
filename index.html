@@ -1,0 +1,493 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>File Explorer</title>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --panel: rgba(255,255,255,0.06);
+      --panel2: rgba(255,255,255,0.09);
+      --text: rgba(255,255,255,0.92);
+      --muted: rgba(255,255,255,0.65);
+      --border: rgba(255,255,255,0.12);
+      --accent: #8b5cf6;
+      --accent2: #22c55e;
+      --danger: #ef4444;
+      --shadow: 0 18px 55px rgba(0,0,0,0.35);
+      --radius: 16px;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+    }
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      font-family: var(--sans);
+      background:
+        radial-gradient(900px 500px at 15% 20%, rgba(139,92,246,0.35), transparent 55%),
+        radial-gradient(800px 600px at 85% 35%, rgba(34,197,94,0.18), transparent 60%),
+        radial-gradient(600px 500px at 50% 85%, rgba(59,130,246,0.14), transparent 60%),
+        var(--bg);
+      color: var(--text);
+      display: grid;
+      place-items: center;
+      padding: 26px;
+    }
+
+    .app {
+      width: min(980px, 100%);
+      border: 1px solid var(--border);
+      background: rgba(0,0,0,0.30);
+      backdrop-filter: blur(10px);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    header {
+      padding: 18px 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      border-bottom: 1px solid var(--border);
+      background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03));
+    }
+
+    .title {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+    }
+
+    .title h1 {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 650;
+      letter-spacing: 0.2px;
+    }
+
+    .path {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 62ch;
+    }
+
+    .spacer { flex: 1; }
+
+    .btn {
+      appearance: none;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      color: var(--text);
+      padding: 10px 12px;
+      border-radius: 12px;
+      font-weight: 600;
+      font-size: 13px;
+      cursor: pointer;
+      transition: transform 120ms ease, background 120ms ease, border-color 120ms ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      user-select: none;
+    }
+    .btn:hover { background: var(--panel2); border-color: rgba(255,255,255,0.2); }
+    .btn:active { transform: translateY(1px); }
+
+    .btn.primary {
+      border-color: rgba(139,92,246,0.45);
+      background: rgba(139,92,246,0.18);
+    }
+    .btn.primary:hover { background: rgba(139,92,246,0.24); }
+
+    .btn.danger {
+      border-color: rgba(239,68,68,0.45);
+      background: rgba(239,68,68,0.14);
+    }
+    .btn.danger:hover { background: rgba(239,68,68,0.20); }
+
+    main {
+      padding: 18px 20px 20px;
+    }
+
+    .toolbar {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 14px;
+    }
+
+    .search {
+      flex: 1;
+      min-width: 220px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.04);
+      padding: 10px 12px;
+      border-radius: 14px;
+    }
+    .search input {
+      width: 100%;
+      border: 0;
+      outline: 0;
+      background: transparent;
+      color: var(--text);
+      font-size: 14px;
+    }
+    .search .hint { font-size: 12px; color: var(--muted); }
+
+    .list {
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+      background: rgba(255,255,255,0.03);
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 40px 1fr 120px 110px;
+      gap: 12px;
+      align-items: center;
+      padding: 12px 12px;
+      border-top: 1px solid rgba(255,255,255,0.06);
+    }
+
+    .row:first-child { border-top: 0; }
+    .row:hover { background: rgba(255,255,255,0.04); }
+
+    .icon {
+      width: 34px;
+      height: 34px;
+      border-radius: 12px;
+      display: grid;
+      place-items: center;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(0,0,0,0.18);
+      font-family: var(--mono);
+      font-size: 12px;
+      color: rgba(255,255,255,0.85);
+    }
+    .icon.dir { border-color: rgba(34,197,94,0.32); background: rgba(34,197,94,0.12); }
+    .icon.file { border-color: rgba(139,92,246,0.32); background: rgba(139,92,246,0.12); }
+
+    .name {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+    }
+    .name .primaryText {
+      font-weight: 650;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .name .secondaryText {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--muted);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .meta {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--muted);
+      text-align: right;
+    }
+
+    .actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    .chip {
+      font-family: var(--mono);
+      font-size: 11px;
+      padding: 6px 8px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(255,255,255,0.05);
+      color: rgba(255,255,255,0.82);
+    }
+    .chip.dir { border-color: rgba(34,197,94,0.30); background: rgba(34,197,94,0.10); }
+    .chip.file { border-color: rgba(139,92,246,0.30); background: rgba(139,92,246,0.10); }
+
+    .state {
+      padding: 14px;
+      border: 1px dashed rgba(255,255,255,0.18);
+      border-radius: 14px;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 13px;
+    }
+
+    .footer {
+      padding: 14px 20px;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 12px;
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    @media (max-width: 760px) {
+      .row { grid-template-columns: 40px 1fr 90px; }
+      .row .actions { display: none; }
+      .meta.hideOnMobile { display: none; }
+      .path { max-width: 40ch; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div class="title">
+        <h1>File Explorer</h1>
+        <div id="path" class="path">/</div>
+      </div>
+      <div class="spacer"></div>
+      <button id="backBtn" class="btn" type="button" title="Go up one level">← Back</button>
+      <button id="refreshBtn" class="btn primary" type="button" title="Reload current directory">⟳ Refresh</button>
+    </header>
+
+    <main>
+      <div class="toolbar">
+        <div class="search">
+          <span class="hint">Search</span>
+          <input id="searchInput" placeholder="Filter by name…" autocomplete="off" />
+        </div>
+        <span id="countChip" class="chip">0 items</span>
+      </div>
+
+      <div id="state" class="state">Loading…</div>
+
+      <div id="list" class="list" style="display:none;"></div>
+    </main>
+
+    <div class="footer">
+      <div>Frontend only. It fetches listings from your backend.</div>
+      <div><span class="chip">GET /api/list?path=...</span></div>
+    </div>
+  </div>
+
+  <script>
+    // ===========
+    // Config
+    // ===========
+    const API_LIST = "/api/list"; // You will implement this backend endpoint.
+    const DEFAULT_PATH = "/";     // You decide what "/" maps to on the server side.
+
+    // ===========
+    // State
+    // ===========
+    let currentPath = DEFAULT_PATH;
+    let currentItems = [];
+
+    // ===========
+    // Helpers
+    // ===========
+    function joinPath(base, name) {
+      if (base.endsWith("/")) return base + name;
+      return base + "/" + name;
+    }
+
+    function parentPath(p) {
+      if (!p || p === "/") return "/";
+      const trimmed = p.endsWith("/") ? p.slice(0, -1) : p;
+      const idx = trimmed.lastIndexOf("/");
+      if (idx <= 0) return "/";
+      return trimmed.slice(0, idx);
+    }
+
+    function escapeHtml(s) {
+      return s.replace(/[&<>"']/g, (ch) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+      }[ch]));
+    }
+
+    function setState(text, isError = false) {
+      const el = document.getElementById("state");
+      el.style.display = "block";
+      el.textContent = text;
+      el.style.borderColor = isError ? "rgba(239,68,68,0.45)" : "rgba(255,255,255,0.18)";
+      document.getElementById("list").style.display = "none";
+    }
+
+    function setListVisible() {
+      document.getElementById("state").style.display = "none";
+      document.getElementById("list").style.display = "block";
+    }
+
+    function updateHeader(path) {
+      document.getElementById("path").textContent = path;
+    }
+
+    function updateCount(n) {
+      document.getElementById("countChip").textContent = `${n} item${n === 1 ? "" : "s"}`;
+    }
+
+    // ===========
+    // API
+    // ===========
+    async function fetchListing(path) {
+      const url = new URL(API_LIST, window.location.origin);
+      url.searchParams.set("path", path);
+
+      const res = await fetch(url.toString(), { method: "GET" });
+      if (!res.ok) {
+        const txt = await res.text().catch(() => "");
+        throw new Error(`Backend error (${res.status}): ${txt || "No details"}`);
+      }
+      return res.json();
+    }
+
+    // ===========
+    // Render
+    // ===========
+    function render(items) {
+      currentItems = items;
+
+      const listEl = document.getElementById("list");
+      listEl.innerHTML = "";
+
+      const filter = document.getElementById("searchInput").value.trim().toLowerCase();
+      const filtered = filter
+        ? items.filter(it => (it.name || "").toLowerCase().includes(filter))
+        : items;
+
+      updateCount(filtered.length);
+
+      if (filtered.length === 0) {
+        setState(filter ? "No matches." : "Empty directory.");
+        return;
+      }
+
+      setListVisible();
+
+      for (const it of filtered) {
+        const type = it.type === "dir" ? "dir" : "file";
+        const iconText = type === "dir" ? "DIR" : "FILE";
+
+        const row = document.createElement("div");
+        row.className = "row";
+
+        const full = joinPath(currentPath, it.name);
+
+        row.innerHTML = `
+          <div class="icon ${type}">${iconText}</div>
+          <div class="name">
+            <div class="primaryText">${escapeHtml(it.name || "")}</div>
+            <div class="secondaryText">${escapeHtml(full)}</div>
+          </div>
+          <div class="meta hideOnMobile">
+            <span class="chip ${type}">${type}</span>
+          </div>
+          <div class="actions">
+            ${type === "dir"
+              ? `<button class="btn primary" data-open="${escapeHtml(it.name)}" type="button">Open</button>`
+              : `<button class="btn" data-select="${escapeHtml(it.name)}" type="button">Select</button>`
+            }
+          </div>
+        `;
+
+        // Click anywhere on the row:
+        row.addEventListener("click", (e) => {
+          // If a button was clicked, let its handler run instead.
+          if (e.target && e.target.closest("button")) return;
+
+          if (type === "dir") {
+            navigateTo(joinPath(currentPath, it.name));
+          } else {
+            // You decide what "select file" means; this event is a clean hook.
+            onSelectFile(full, it);
+          }
+        });
+
+        listEl.appendChild(row);
+      }
+
+      // Wire buttons
+      listEl.querySelectorAll("button[data-open]").forEach(btn => {
+        btn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const name = btn.getAttribute("data-open");
+          navigateTo(joinPath(currentPath, name));
+        });
+      });
+
+      listEl.querySelectorAll("button[data-select]").forEach(btn => {
+        btn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const name = btn.getAttribute("data-select");
+          const full = joinPath(currentPath, name);
+          onSelectFile(full, { name, type: "file" });
+        });
+      });
+    }
+
+    // ===========
+    // Navigation actions
+    // ===========
+    async function navigateTo(path) {
+      try {
+        setState("Loading…");
+        const data = await fetchListing(path);
+
+        // Expecting { path, parent, items }
+        currentPath = data.path ?? path;
+        updateHeader(currentPath);
+
+        // Back button logic: disable if at root
+        const atRoot = (currentPath === "/" || !currentPath);
+        document.getElementById("backBtn").disabled = atRoot;
+
+        render(Array.isArray(data.items) ? data.items : []);
+      } catch (err) {
+        setState(err.message || "Failed to load directory.", true);
+      }
+    }
+
+    function onSelectFile(fullPath, item) {
+      // Hook: you can replace this with whatever you want (preview, download, open, etc.)
+      // For now we just show a simple toast-like alert.
+      alert(`Selected: ${fullPath}`);
+    }
+
+    // ===========
+    // Wire up UI
+    // ===========
+    document.getElementById("backBtn").addEventListener("click", () => {
+      navigateTo(parentPath(currentPath));
+    });
+
+    document.getElementById("refreshBtn").addEventListener("click", () => {
+      navigateTo(currentPath);
+    });
+
+    document.getElementById("searchInput").addEventListener("input", () => {
+      render(currentItems);
+    });
+
+    // ===========
+    // Boot
+    // ===========
+    navigateTo(DEFAULT_PATH);
+  </script>
+</body>
+</html>
