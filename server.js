@@ -1,10 +1,12 @@
 import http from "node:http";
 import process from "node:process";
+import { createReadStream } from "node:fs";
 import path from "node:path";
 import { promises as fs } from "node:fs";
 
 const server = http.createServer(async (req, res) => {
     const ROOT = process.cwd();
+    console.log(req.url);
     if (req.method === "GET" && req.url === "/favicon.ico") {
         res.writeHead(204); // No Content
         res.end();
@@ -19,10 +21,10 @@ const server = http.createServer(async (req, res) => {
         return;
     }
 
-    if (req.method === "GET") {
+    if (req.method === "GET" && req.url.startsWith("/api/list")) {
         const url = new URL(req.url, `http://${req.headers.host}`);
         const path = url.searchParams.get("path");
-        console.log(path);
+        console.log(url);
         if (path === "/") {
             console.log("hi");
             const path = process.cwd();
@@ -62,6 +64,29 @@ const server = http.createServer(async (req, res) => {
           type: e.isDirectory() ? "dir" : "file"
         }));
         res.end(JSON.stringify({ path, items}));
+        return;
+    }
+
+
+
+
+    if (req.method === "GET" && req.url.startsWith("/api/file")){
+        const url = new URL(req.url, `http://${req.headers.host}`);
+        const n_path = url.searchParams.get("path");
+
+        const ext = path.extname(n_path).toLowerCase();
+        const stat = await fs.stat(n_path);
+        const contentType =
+            ext === ".pdf" ? "application/pdf" :
+            ext === ".txt" ? "text/plain; charset=utf-8" :
+            "application/octet-stream";
+
+        res.writeHead(200, {
+            "Content-Type": contentType,
+            "Content-Length": stat.size,
+        });
+
+        createReadStream(n_path).pipe(res);
         return;
     }
 });

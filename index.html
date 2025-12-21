@@ -5,252 +5,138 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>File Explorer</title>
   <style>
-    :root {
-      --bg: #0b1020;
-      --panel: rgba(255,255,255,0.06);
-      --panel2: rgba(255,255,255,0.09);
-      --text: rgba(255,255,255,0.92);
-      --muted: rgba(255,255,255,0.65);
-      --border: rgba(255,255,255,0.12);
-      --accent: #8b5cf6;
-      --accent2: #22c55e;
-      --danger: #ef4444;
-      --shadow: 0 18px 55px rgba(0,0,0,0.35);
-      --radius: 16px;
-      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-      --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+    :root{
+      --bg:#0b1020; --panel:rgba(255,255,255,0.06); --panel2:rgba(255,255,255,0.09);
+      --text:rgba(255,255,255,0.92); --muted:rgba(255,255,255,0.65); --border:rgba(255,255,255,0.12);
+      --accent:#8b5cf6; --accent2:#22c55e; --danger:#ef4444; --shadow:0 18px 55px rgba(0,0,0,0.35);
+      --radius:16px; --mono:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;
+      --sans:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Apple Color Emoji","Segoe UI Emoji";
     }
-
-    * { box-sizing: border-box; }
-    html, body { height: 100%; }
-    body {
-      margin: 0;
-      font-family: var(--sans);
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0; font-family:var(--sans); color:var(--text);
       background:
         radial-gradient(900px 500px at 15% 20%, rgba(139,92,246,0.35), transparent 55%),
         radial-gradient(800px 600px at 85% 35%, rgba(34,197,94,0.18), transparent 60%),
         radial-gradient(600px 500px at 50% 85%, rgba(59,130,246,0.14), transparent 60%),
         var(--bg);
-      color: var(--text);
-      display: grid;
-      place-items: center;
-      padding: 26px;
+      padding:26px;
+    }
+    .app{
+      width:min(1180px,100%);
+      margin:0 auto;
+      border:1px solid var(--border);
+      background:rgba(0,0,0,0.30);
+      backdrop-filter:blur(10px);
+      border-radius:var(--radius);
+      box-shadow:var(--shadow);
+      overflow:hidden;
+    }
+    header{
+      padding:18px 20px;
+      display:flex; align-items:center; gap:12px;
+      border-bottom:1px solid var(--border);
+      background:linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03));
+    }
+    .title{display:flex; flex-direction:column; gap:2px; min-width:0;}
+    .title h1{margin:0; font-size:16px; font-weight:650;}
+    .path{font-family:var(--mono); font-size:12px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:62ch;}
+    .spacer{flex:1}
+    .btn{
+      appearance:none; border:1px solid var(--border); background:var(--panel); color:var(--text);
+      padding:10px 12px; border-radius:12px; font-weight:600; font-size:13px; cursor:pointer;
+      transition:transform 120ms ease, background 120ms ease, border-color 120ms ease;
+      display:inline-flex; align-items:center; gap:8px; user-select:none;
+    }
+    .btn:hover{background:var(--panel2); border-color:rgba(255,255,255,0.2)}
+    .btn:active{transform:translateY(1px)}
+    .btn.primary{border-color:rgba(139,92,246,0.45); background:rgba(139,92,246,0.18)}
+    .btn.primary:hover{background:rgba(139,92,246,0.24)}
+    .btn.danger{border-color:rgba(239,68,68,0.45); background:rgba(239,68,68,0.14)}
+    .btn.danger:hover{background:rgba(239,68,68,0.20)}
+    .layout{
+      display:grid;
+      grid-template-columns: 1.05fr 0.95fr;
+      min-height: 640px;
+    }
+    .pane{padding:18px 20px 20px;}
+    .divider{border-left:1px solid var(--border); background:rgba(255,255,255,0.02)}
+    .toolbar{display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:14px;}
+    .search{
+      flex:1; min-width:220px; display:flex; align-items:center; gap:10px;
+      border:1px solid var(--border); background:rgba(255,255,255,0.04);
+      padding:10px 12px; border-radius:14px;
+    }
+    .search input{width:100%; border:0; outline:0; background:transparent; color:var(--text); font-size:14px;}
+    .search .hint{font-size:12px; color:var(--muted)}
+    .chip{font-family:var(--mono); font-size:11px; padding:6px 8px; border-radius:999px; border:1px solid rgba(255,255,255,0.14);
+      background:rgba(255,255,255,0.05); color:rgba(255,255,255,0.82);}
+    .chip.dir{border-color:rgba(34,197,94,0.30); background:rgba(34,197,94,0.10)}
+    .chip.file{border-color:rgba(139,92,246,0.30); background:rgba(139,92,246,0.10)}
+    .state{
+      padding:14px; border:1px dashed rgba(255,255,255,0.18); border-radius:14px; color:var(--muted);
+      font-family:var(--mono); font-size:13px;
+    }
+    .list{border:1px solid var(--border); border-radius:14px; overflow:hidden; background:rgba(255,255,255,0.03);}
+    .row{
+      display:grid; grid-template-columns: 40px 1fr 100px;
+      gap:12px; align-items:center; padding:12px 12px; border-top:1px solid rgba(255,255,255,0.06);
+      cursor:pointer;
+    }
+    .row:first-child{border-top:0}
+    .row:hover{background:rgba(255,255,255,0.04)}
+    .icon{
+      width:34px; height:34px; border-radius:12px; display:grid; place-items:center;
+      border:1px solid rgba(255,255,255,0.12); background:rgba(0,0,0,0.18);
+      font-family:var(--mono); font-size:12px; color:rgba(255,255,255,0.85);
+    }
+    .icon.dir{border-color:rgba(34,197,94,0.32); background:rgba(34,197,94,0.12)}
+    .icon.file{border-color:rgba(139,92,246,0.32); background:rgba(139,92,246,0.12)}
+    .name{display:flex; flex-direction:column; gap:2px; min-width:0;}
+    .name .primaryText{font-weight:650; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+    .name .secondaryText{font-family:var(--mono); font-size:12px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+
+    /* Viewer */
+    .viewerTop{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:14px;}
+    .viewerTitle{display:flex; flex-direction:column; gap:2px; min-width:0;}
+    .viewerTitle .h{font-weight:650;}
+    .viewerTitle .p{font-family:var(--mono); font-size:12px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:48ch;}
+    .viewerBox{
+      border:1px solid var(--border);
+      border-radius:14px;
+      overflow:hidden;
+      background:rgba(255,255,255,0.03);
+      min-height: 520px;
+    }
+    .viewerEmpty{
+      padding:18px;
+      color:var(--muted);
+      font-family:var(--mono);
+      font-size:13px;
+    }
+    iframe{
+      width:100%;
+      height:520px;
+      border:0;
+      display:block;
+      background:rgba(0,0,0,0.10);
+    }
+    pre{
+      margin:0;
+      padding:16px;
+      font-family:var(--mono);
+      font-size:13px;
+      line-height:1.55;
+      white-space:pre-wrap;
+      word-break:break-word;
     }
 
-    .app {
-      width: min(980px, 100%);
-      border: 1px solid var(--border);
-      background: rgba(0,0,0,0.30);
-      backdrop-filter: blur(10px);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-      overflow: hidden;
-    }
-
-    header {
-      padding: 18px 20px;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      border-bottom: 1px solid var(--border);
-      background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03));
-    }
-
-    .title {
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-      min-width: 0;
-    }
-
-    .title h1 {
-      margin: 0;
-      font-size: 16px;
-      font-weight: 650;
-      letter-spacing: 0.2px;
-    }
-
-    .path {
-      font-family: var(--mono);
-      font-size: 12px;
-      color: var(--muted);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      max-width: 62ch;
-    }
-
-    .spacer { flex: 1; }
-
-    .btn {
-      appearance: none;
-      border: 1px solid var(--border);
-      background: var(--panel);
-      color: var(--text);
-      padding: 10px 12px;
-      border-radius: 12px;
-      font-weight: 600;
-      font-size: 13px;
-      cursor: pointer;
-      transition: transform 120ms ease, background 120ms ease, border-color 120ms ease;
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      user-select: none;
-    }
-    .btn:hover { background: var(--panel2); border-color: rgba(255,255,255,0.2); }
-    .btn:active { transform: translateY(1px); }
-
-    .btn.primary {
-      border-color: rgba(139,92,246,0.45);
-      background: rgba(139,92,246,0.18);
-    }
-    .btn.primary:hover { background: rgba(139,92,246,0.24); }
-
-    .btn.danger {
-      border-color: rgba(239,68,68,0.45);
-      background: rgba(239,68,68,0.14);
-    }
-    .btn.danger:hover { background: rgba(239,68,68,0.20); }
-
-    main {
-      padding: 18px 20px 20px;
-    }
-
-    .toolbar {
-      display: flex;
-      gap: 10px;
-      align-items: center;
-      flex-wrap: wrap;
-      margin-bottom: 14px;
-    }
-
-    .search {
-      flex: 1;
-      min-width: 220px;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      border: 1px solid var(--border);
-      background: rgba(255,255,255,0.04);
-      padding: 10px 12px;
-      border-radius: 14px;
-    }
-    .search input {
-      width: 100%;
-      border: 0;
-      outline: 0;
-      background: transparent;
-      color: var(--text);
-      font-size: 14px;
-    }
-    .search .hint { font-size: 12px; color: var(--muted); }
-
-    .list {
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      overflow: hidden;
-      background: rgba(255,255,255,0.03);
-    }
-
-    .row {
-      display: grid;
-      grid-template-columns: 40px 1fr 120px 110px;
-      gap: 12px;
-      align-items: center;
-      padding: 12px 12px;
-      border-top: 1px solid rgba(255,255,255,0.06);
-    }
-
-    .row:first-child { border-top: 0; }
-    .row:hover { background: rgba(255,255,255,0.04); }
-
-    .icon {
-      width: 34px;
-      height: 34px;
-      border-radius: 12px;
-      display: grid;
-      place-items: center;
-      border: 1px solid rgba(255,255,255,0.12);
-      background: rgba(0,0,0,0.18);
-      font-family: var(--mono);
-      font-size: 12px;
-      color: rgba(255,255,255,0.85);
-    }
-    .icon.dir { border-color: rgba(34,197,94,0.32); background: rgba(34,197,94,0.12); }
-    .icon.file { border-color: rgba(139,92,246,0.32); background: rgba(139,92,246,0.12); }
-
-    .name {
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-      min-width: 0;
-    }
-    .name .primaryText {
-      font-weight: 650;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .name .secondaryText {
-      font-family: var(--mono);
-      font-size: 12px;
-      color: var(--muted);
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    .meta {
-      font-family: var(--mono);
-      font-size: 12px;
-      color: var(--muted);
-      text-align: right;
-    }
-
-    .actions {
-      display: flex;
-      justify-content: flex-end;
-      gap: 8px;
-    }
-
-    .chip {
-      font-family: var(--mono);
-      font-size: 11px;
-      padding: 6px 8px;
-      border-radius: 999px;
-      border: 1px solid rgba(255,255,255,0.14);
-      background: rgba(255,255,255,0.05);
-      color: rgba(255,255,255,0.82);
-    }
-    .chip.dir { border-color: rgba(34,197,94,0.30); background: rgba(34,197,94,0.10); }
-    .chip.file { border-color: rgba(139,92,246,0.30); background: rgba(139,92,246,0.10); }
-
-    .state {
-      padding: 14px;
-      border: 1px dashed rgba(255,255,255,0.18);
-      border-radius: 14px;
-      color: var(--muted);
-      font-family: var(--mono);
-      font-size: 13px;
-    }
-
-    .footer {
-      padding: 14px 20px;
-      border-top: 1px solid var(--border);
-      color: var(--muted);
-      font-size: 12px;
-      display: flex;
-      justify-content: space-between;
-      gap: 12px;
-      flex-wrap: wrap;
-    }
-
-    @media (max-width: 760px) {
-      .row { grid-template-columns: 40px 1fr 90px; }
-      .row .actions { display: none; }
-      .meta.hideOnMobile { display: none; }
-      .path { max-width: 40ch; }
+    @media (max-width: 980px){
+      .layout{grid-template-columns: 1fr; }
+      .divider{border-left:0; border-top:1px solid var(--border);}
+      iframe{height:460px;}
+      .viewerBox{min-height:460px;}
     }
   </style>
 </head>
@@ -262,47 +148,69 @@
         <div id="path" class="path">/</div>
       </div>
       <div class="spacer"></div>
-      <button id="backBtn" class="btn" type="button" title="Go up one level">← Back</button>
-      <button id="refreshBtn" class="btn primary" type="button" title="Reload current directory">⟳ Refresh</button>
+      <button id="backBtn" class="btn" type="button">← Back</button>
+      <button id="refreshBtn" class="btn primary" type="button">⟳ Refresh</button>
     </header>
 
-    <main>
-      <div class="toolbar">
-        <div class="search">
-          <span class="hint">Search</span>
-          <input id="searchInput" placeholder="Filter by name…" autocomplete="off" />
+    <div class="layout">
+      <!-- Left pane: list -->
+      <main class="pane">
+        <div class="toolbar">
+          <div class="search">
+            <span class="hint">Search</span>
+            <input id="searchInput" placeholder="Filter by name…" autocomplete="off" />
+          </div>
+          <span id="countChip" class="chip">0 items</span>
         </div>
-        <span id="countChip" class="chip">0 items</span>
-      </div>
 
-      <div id="state" class="state">Loading…</div>
+        <div id="state" class="state">Loading…</div>
+        <div id="list" class="list" style="display:none;"></div>
+      </main>
 
-      <div id="list" class="list" style="display:none;"></div>
-    </main>
+      <!-- Right pane: viewer -->
+      <aside class="pane divider">
+        <div class="viewerTop">
+          <div class="viewerTitle">
+            <div class="h">Viewer</div>
+            <div id="selectedPath" class="p">No file selected</div>
+          </div>
+          <div class="spacer"></div>
+          <button id="openNewTabBtn" class="btn" type="button" disabled>Open in new tab</button>
+          <button id="clearBtn" class="btn danger" type="button" disabled>Clear</button>
+        </div>
 
-    <div class="footer">
-      <div>Frontend only. It fetches listings from your backend.</div>
-      <div><span class="chip">GET /api/list?path=...</span></div>
+        <div id="viewer" class="viewerBox">
+          <div class="viewerEmpty">
+            Click a <span class="chip dir">dir</span> to navigate, or click a <span class="chip file">file</span> to preview it here.
+            <br><br>
+            Your backend should implement <span class="chip">GET /api/file?path=...</span>.
+          </div>
+        </div>
+      </aside>
     </div>
   </div>
 
   <script>
-    // ===========
-    // Config
-    // ===========
-    const API_LIST = "/api/list"; // You will implement this backend endpoint.
-    const DEFAULT_PATH = "/";     // You decide what "/" maps to on the server side.
+    // ==================
+    // Config (frontend)
+    // ==================
+    const API_LIST = "/api/list";
+    const API_FILE = "/api/file";
+    const DEFAULT_PATH = "/";
 
-    // ===========
+    // ==================
     // State
-    // ===========
+    // ==================
     let currentPath = DEFAULT_PATH;
     let currentItems = [];
+    let selectedFilePath = null;
+    let selectedFileObjectUrl = null;
 
-    // ===========
+    // ==================
     // Helpers
-    // ===========
+    // ==================
     function joinPath(base, name) {
+      if (base === "/") return "/" + name;
       if (base.endsWith("/")) return base + name;
       return base + "/" + name;
     }
@@ -336,15 +244,32 @@
 
     function updateHeader(path) {
       document.getElementById("path").textContent = path;
+      document.getElementById("backBtn").disabled = (path === "/");
     }
 
     function updateCount(n) {
       document.getElementById("countChip").textContent = `${n} item${n === 1 ? "" : "s"}`;
     }
 
-    // ===========
-    // API
-    // ===========
+    function setSelectedPathText(text) {
+      document.getElementById("selectedPath").textContent = text;
+    }
+
+    function enableViewerButtons(enabled) {
+      document.getElementById("clearBtn").disabled = !enabled;
+      document.getElementById("openNewTabBtn").disabled = !enabled;
+    }
+
+    function clearObjectUrlIfAny() {
+      if (selectedFileObjectUrl) {
+        URL.revokeObjectURL(selectedFileObjectUrl);
+        selectedFileObjectUrl = null;
+      }
+    }
+
+    // ==================
+    // API calls
+    // ==================
     async function fetchListing(path) {
       const url = new URL(API_LIST, window.location.origin);
       url.searchParams.set("path", path);
@@ -357,10 +282,25 @@
       return res.json();
     }
 
-    // ===========
-    // Render
-    // ===========
-    function render(items) {
+    async function fetchFileBlob(path) {
+      const url = new URL(API_FILE, window.location.origin);
+      url.searchParams.set("path", path);
+
+      const res = await fetch(url.toString(), { method: "GET" });
+      if (!res.ok) {
+        const txt = await res.text().catch(() => "");
+        throw new Error(`Backend error (${res.status}): ${txt || "No details"}`);
+      }
+
+      const contentType = res.headers.get("Content-Type") || "application/octet-stream";
+      const blob = await res.blob();
+      return { blob, contentType, url: url.toString() };
+    }
+
+    // ==================
+    // Render list
+    // ==================
+    function renderList(items) {
       currentItems = items;
 
       const listEl = document.getElementById("list");
@@ -383,95 +323,124 @@
       for (const it of filtered) {
         const type = it.type === "dir" ? "dir" : "file";
         const iconText = type === "dir" ? "DIR" : "FILE";
+        const full = joinPath(currentPath, it.name);
 
         const row = document.createElement("div");
         row.className = "row";
-
-        const full = joinPath(currentPath, it.name);
-
         row.innerHTML = `
           <div class="icon ${type}">${iconText}</div>
           <div class="name">
             <div class="primaryText">${escapeHtml(it.name || "")}</div>
             <div class="secondaryText">${escapeHtml(full)}</div>
           </div>
-          <div class="meta hideOnMobile">
+          <div style="text-align:right;">
             <span class="chip ${type}">${type}</span>
-          </div>
-          <div class="actions">
-            ${type === "dir"
-              ? `<button class="btn primary" data-open="${escapeHtml(it.name)}" type="button">Open</button>`
-              : `<button class="btn" data-select="${escapeHtml(it.name)}" type="button">Select</button>`
-            }
           </div>
         `;
 
-        // Click anywhere on the row:
-        row.addEventListener("click", (e) => {
-          // If a button was clicked, let its handler run instead.
-          if (e.target && e.target.closest("button")) return;
-
+        row.addEventListener("click", () => {
           if (type === "dir") {
-            navigateTo(joinPath(currentPath, it.name));
+            navigateTo(full);
           } else {
-            // You decide what "select file" means; this event is a clean hook.
-            onSelectFile(full, it);
+            previewFile(full);
           }
         });
 
         listEl.appendChild(row);
       }
-
-      // Wire buttons
-      listEl.querySelectorAll("button[data-open]").forEach(btn => {
-        btn.addEventListener("click", (e) => {
-          e.stopPropagation();
-          const name = btn.getAttribute("data-open");
-          navigateTo(joinPath(currentPath, name));
-        });
-      });
-
-      listEl.querySelectorAll("button[data-select]").forEach(btn => {
-        btn.addEventListener("click", (e) => {
-          e.stopPropagation();
-          const name = btn.getAttribute("data-select");
-          const full = joinPath(currentPath, name);
-          onSelectFile(full, { name, type: "file" });
-        });
-      });
     }
 
-    // ===========
-    // Navigation actions
-    // ===========
+    // ==================
+    // Viewer rendering
+    // ==================
+    function showViewerEmpty(message) {
+      const viewer = document.getElementById("viewer");
+      viewer.innerHTML = `<div class="viewerEmpty">${escapeHtml(message)}</div>`;
+    }
+
+    function showViewerText(text) {
+      const viewer = document.getElementById("viewer");
+      viewer.innerHTML = `<pre>${escapeHtml(text)}</pre>`;
+    }
+
+    function showViewerPdf(objectUrl) {
+      const viewer = document.getElementById("viewer");
+      viewer.innerHTML = `<iframe title="PDF preview" src="${objectUrl}"></iframe>`;
+    }
+
+    // ==================
+    // Navigation + actions
+    // ==================
     async function navigateTo(path) {
       try {
         setState("Loading…");
         const data = await fetchListing(path);
 
-        // Expecting { path, parent, items }
         currentPath = data.path ?? path;
         updateHeader(currentPath);
 
-        // Back button logic: disable if at root
-        const atRoot = (currentPath === "/" || !currentPath);
-        document.getElementById("backBtn").disabled = atRoot;
-
-        render(Array.isArray(data.items) ? data.items : []);
+        renderList(Array.isArray(data.items) ? data.items : []);
       } catch (err) {
         setState(err.message || "Failed to load directory.", true);
       }
     }
 
-    function onSelectFile(fullPath, item) {
-      // Hook: you can replace this with whatever you want (preview, download, open, etc.)
-      // For now we just show a simple toast-like alert.
-      alert(`Selected: ${fullPath}`);
+    async function previewFile(fullPath) {
+      try {
+        // UI updates first
+        selectedFilePath = fullPath;
+        setSelectedPathText(fullPath);
+        enableViewerButtons(true);
+
+        // Clean old preview URL (important for memory)
+        clearObjectUrlIfAny();
+
+        // Show loading in viewer
+        showViewerEmpty("Loading file preview…");
+
+        // Ask backend for file bytes
+        const { blob, contentType, url } = await fetchFileBlob(fullPath);
+
+        // Set "Open in new tab" to the backend endpoint (stream)
+        const openBtn = document.getElementById("openNewTabBtn");
+        openBtn.onclick = () => window.open(url, "_blank", "noopener,noreferrer");
+
+        // Decide how to preview
+        const lowerType = (contentType || "").toLowerCase();
+
+        if (lowerType.includes("application/pdf")) {
+          // PDF preview via iframe using a blob URL
+          selectedFileObjectUrl = URL.createObjectURL(blob);
+          showViewerPdf(selectedFileObjectUrl);
+          return;
+        }
+
+        if (lowerType.startsWith("text/") || lowerType.includes("json") || lowerType.includes("xml")) {
+          // Text preview: read blob as text
+          const text = await blob.text();
+          showViewerText(text);
+          return;
+        }
+
+        // Fallback: can't preview this type nicely
+        showViewerEmpty(`No preview for Content-Type: ${contentType}. Use "Open in new tab".`);
+      } catch (err) {
+        showViewerEmpty(err.message || "Failed to preview file.");
+      }
     }
 
-    // ===========
-    // Wire up UI
-    // ===========
+    function clearSelection() {
+      selectedFilePath = null;
+      setSelectedPathText("No file selected");
+      enableViewerButtons(false);
+      clearObjectUrlIfAny();
+      showViewerEmpty("Click a file to preview it here.");
+      document.getElementById("openNewTabBtn").onclick = null;
+    }
+
+    // ==================
+    // Wire UI
+    // ==================
     document.getElementById("backBtn").addEventListener("click", () => {
       navigateTo(parentPath(currentPath));
     });
@@ -481,12 +450,16 @@
     });
 
     document.getElementById("searchInput").addEventListener("input", () => {
-      render(currentItems);
+      renderList(currentItems);
     });
 
-    // ===========
+    document.getElementById("clearBtn").addEventListener("click", clearSelection);
+
+    // ==================
     // Boot
-    // ===========
+    // ==================
+    updateHeader(currentPath);
+    clearSelection();
     navigateTo(DEFAULT_PATH);
   </script>
 </body>
