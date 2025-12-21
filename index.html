@@ -3,219 +3,438 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>File Explorer</title>
+  <title>VimSplit File Viewer</title>
   <style>
     :root{
-      --bg:#0b1020; --panel:rgba(255,255,255,0.06); --panel2:rgba(255,255,255,0.09);
-      --text:rgba(255,255,255,0.92); --muted:rgba(255,255,255,0.65); --border:rgba(255,255,255,0.12);
-      --accent:#8b5cf6; --accent2:#22c55e; --danger:#ef4444; --shadow:0 18px 55px rgba(0,0,0,0.35);
-      --radius:16px; --mono:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;
-      --sans:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Apple Color Emoji","Segoe UI Emoji";
+      --bg:#0b1020;
+      --panel: rgba(255,255,255,0.05);
+      --panel2: rgba(255,255,255,0.08);
+      --border: rgba(255,255,255,0.12);
+      --text: rgba(255,255,255,0.92);
+      --muted: rgba(255,255,255,0.62);
+      --accent: #8b5cf6;
+      --good: #22c55e;
+      --bad: #ef4444;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+      --shadow: 0 18px 55px rgba(0,0,0,0.35);
+      --radius: 14px;
+      --statusH: 28px;
+      --cmdH: 34px;
     }
-    *{box-sizing:border-box}
-    html,body{height:100%}
+
+    *{ box-sizing:border-box; }
+    html, body { height:100%; }
     body{
-      margin:0; font-family:var(--sans); color:var(--text);
+      margin:0;
+      font-family: var(--sans);
+      color: var(--text);
       background:
         radial-gradient(900px 500px at 15% 20%, rgba(139,92,246,0.35), transparent 55%),
         radial-gradient(800px 600px at 85% 35%, rgba(34,197,94,0.18), transparent 60%),
         radial-gradient(600px 500px at 50% 85%, rgba(59,130,246,0.14), transparent 60%),
         var(--bg);
-      padding:26px;
-    }
-    .app{
-      width:min(1180px,100%);
-      margin:0 auto;
-      border:1px solid var(--border);
-      background:rgba(0,0,0,0.30);
-      backdrop-filter:blur(10px);
-      border-radius:var(--radius);
-      box-shadow:var(--shadow);
       overflow:hidden;
     }
-    header{
-      padding:18px 20px;
-      display:flex; align-items:center; gap:12px;
-      border-bottom:1px solid var(--border);
-      background:linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03));
+
+    .app{
+      height:100%;
+      display:flex;
+      flex-direction:column;
+      padding: 14px;
+      gap: 12px;
     }
-    .title{display:flex; flex-direction:column; gap:2px; min-width:0;}
-    .title h1{margin:0; font-size:16px; font-weight:650;}
-    .path{font-family:var(--mono); font-size:12px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:62ch;}
-    .spacer{flex:1}
-    .btn{
-      appearance:none; border:1px solid var(--border); background:var(--panel); color:var(--text);
-      padding:10px 12px; border-radius:12px; font-weight:600; font-size:13px; cursor:pointer;
-      transition:transform 120ms ease, background 120ms ease, border-color 120ms ease;
-      display:inline-flex; align-items:center; gap:8px; user-select:none;
+
+    .topbar{
+      height: 44px;
+      border: 1px solid var(--border);
+      background: rgba(0,0,0,0.28);
+      backdrop-filter: blur(10px);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      display:flex;
+      align-items:center;
+      padding: 0 14px;
+      gap: 12px;
+      flex: 0 0 auto;
     }
-    .btn:hover{background:var(--panel2); border-color:rgba(255,255,255,0.2)}
-    .btn:active{transform:translateY(1px)}
-    .btn.primary{border-color:rgba(139,92,246,0.45); background:rgba(139,92,246,0.18)}
-    .btn.primary:hover{background:rgba(139,92,246,0.24)}
-    .btn.danger{border-color:rgba(239,68,68,0.45); background:rgba(239,68,68,0.14)}
-    .btn.danger:hover{background:rgba(239,68,68,0.20)}
-    .layout{
+
+    .brand{
+      font-weight: 750;
+      letter-spacing: 0.2px;
+      font-size: 14px;
+    }
+    .hint{
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--muted);
+      overflow:hidden;
+      white-space:nowrap;
+      text-overflow:ellipsis;
+    }
+    .spacer{ flex:1; }
+    .pill{
+      font-family: var(--mono);
+      font-size: 11px;
+      padding: 6px 9px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(255,255,255,0.05);
+      color: rgba(255,255,255,0.86);
+      user-select:none;
+    }
+
+    /* Workspace */
+    .workspaceWrap{
+      position: relative;
+      flex: 1 1 auto;
+      min-height: 0; /* allow children to scroll */
+      border: 1px solid var(--border);
+      background: rgba(0,0,0,0.28);
+      backdrop-filter: blur(10px);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow:hidden;
+    }
+
+    .workspace{
+      position:absolute;
+      inset:0;
+      padding: 10px;
+      display:flex;
+      flex-direction:column;
+      gap: 10px;
+      min-height: 0;
+    }
+
+    /* Split rendering */
+    .split{
+      display:flex;
+      min-height:0;
+      min-width:0;
+      flex: 1 1 auto;
+      gap: 10px;
+    }
+    .split.v{ flex-direction: row; }
+    .split.h{ flex-direction: column; }
+
+    /* Pane */
+    .pane{
+      flex: 1 1 0;
+      min-width: 0;
+      min-height: 0;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: rgba(255,255,255,0.03);
+      overflow:hidden;
+      display:flex;
+      flex-direction:column;
+      position:relative;
+    }
+    .pane.focused{
+      border-color: rgba(139,92,246,0.55);
+      box-shadow: 0 0 0 1px rgba(139,92,246,0.25) inset;
+    }
+
+    .statusline{
+      height: var(--statusH);
+      flex: 0 0 auto;
+      display:flex;
+      align-items:center;
+      gap:10px;
+      padding: 0 10px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02));
+      user-select:none;
+    }
+    .statusLeft{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      min-width:0;
+    }
+    .wid{
+      font-family: var(--mono);
+      font-size: 12px;
+      padding: 3px 7px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(0,0,0,0.18);
+      color: rgba(255,255,255,0.88);
+      flex: 0 0 auto;
+    }
+    .wtype{
+      font-family: var(--mono);
+      font-size: 11px;
+      padding: 3px 7px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(255,255,255,0.05);
+      color: rgba(255,255,255,0.82);
+      flex: 0 0 auto;
+    }
+    .wtype.explorer{ border-color: rgba(34,197,94,0.30); background: rgba(34,197,94,0.10); }
+    .wtype.viewer{ border-color: rgba(139,92,246,0.30); background: rgba(139,92,246,0.10); }
+    .wtype.empty{ border-color: rgba(255,255,255,0.18); background: rgba(255,255,255,0.04); }
+
+    .wtitle{
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--muted);
+      overflow:hidden;
+      text-overflow:ellipsis;
+      white-space:nowrap;
+      min-width: 0;
+    }
+    .statusRight{
+      margin-left:auto;
+      font-family: var(--mono);
+      font-size: 11px;
+      color: rgba(255,255,255,0.55);
+      display:flex;
+      gap: 10px;
+    }
+
+    .content{
+      flex: 1 1 auto;
+      min-height:0;
+      overflow:auto;
+      padding: 10px;
+    }
+
+    /* Empty pane */
+    .emptyMsg{
+      font-family: var(--mono);
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.55;
+      border: 1px dashed rgba(255,255,255,0.16);
+      border-radius: 12px;
+      padding: 12px;
+      background: rgba(255,255,255,0.02);
+    }
+    .kbd{
+      font-family: var(--mono);
+      font-size: 12px;
+      padding: 2px 6px;
+      border-radius: 8px;
+      border: 1px solid rgba(255,255,255,0.16);
+      background: rgba(0,0,0,0.22);
+      color: rgba(255,255,255,0.86);
+      white-space:nowrap;
+    }
+
+    /* Explorer */
+    .explorerHeader{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      margin-bottom: 10px;
+    }
+    .cwd{
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--muted);
+      overflow:hidden;
+      text-overflow:ellipsis;
+      white-space:nowrap;
+    }
+    .smallHint{
+      font-family: var(--mono);
+      font-size: 11px;
+      color: rgba(255,255,255,0.55);
+      white-space:nowrap;
+    }
+    .list{
+      border: 1px solid rgba(255,255,255,0.10);
+      border-radius: 12px;
+      overflow:hidden;
+    }
+    .entry{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      padding: 10px 10px;
+      border-top: 1px solid rgba(255,255,255,0.06);
+      cursor: default;
+      user-select:none;
+    }
+    .entry:first-child{ border-top:0; }
+    .entry .icon{
+      width: 30px; height: 30px;
+      border-radius: 10px;
       display:grid;
-      grid-template-columns: 1.05fr 0.95fr;
-      min-height: 640px;
+      place-items:center;
+      font-family: var(--mono);
+      font-size: 11px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(0,0,0,0.18);
+      flex: 0 0 auto;
     }
-    .pane{padding:18px 20px 20px;}
-    .divider{border-left:1px solid var(--border); background:rgba(255,255,255,0.02)}
-    .toolbar{display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:14px;}
-    .search{
-      flex:1; min-width:220px; display:flex; align-items:center; gap:10px;
-      border:1px solid var(--border); background:rgba(255,255,255,0.04);
-      padding:10px 12px; border-radius:14px;
+    .icon.dir{ border-color: rgba(34,197,94,0.32); background: rgba(34,197,94,0.12); }
+    .icon.file{ border-color: rgba(139,92,246,0.32); background: rgba(139,92,246,0.12); }
+    .entry .name{
+      min-width:0;
+      font-family: var(--mono);
+      font-size: 13px;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      white-space:nowrap;
     }
-    .search input{width:100%; border:0; outline:0; background:transparent; color:var(--text); font-size:14px;}
-    .search .hint{font-size:12px; color:var(--muted)}
-    .chip{font-family:var(--mono); font-size:11px; padding:6px 8px; border-radius:999px; border:1px solid rgba(255,255,255,0.14);
-      background:rgba(255,255,255,0.05); color:rgba(255,255,255,0.82);}
-    .chip.dir{border-color:rgba(34,197,94,0.30); background:rgba(34,197,94,0.10)}
-    .chip.file{border-color:rgba(139,92,246,0.30); background:rgba(139,92,246,0.10)}
-    .state{
-      padding:14px; border:1px dashed rgba(255,255,255,0.18); border-radius:14px; color:var(--muted);
-      font-family:var(--mono); font-size:13px;
+    .entry .meta{
+      margin-left:auto;
+      font-family: var(--mono);
+      font-size: 11px;
+      color: rgba(255,255,255,0.55);
+      flex: 0 0 auto;
     }
-    .list{border:1px solid var(--border); border-radius:14px; overflow:hidden; background:rgba(255,255,255,0.03);}
-    .row{
-      display:grid; grid-template-columns: 40px 1fr 100px;
-      gap:12px; align-items:center; padding:12px 12px; border-top:1px solid rgba(255,255,255,0.06);
-      cursor:pointer;
+    .entry.selected{
+      background: rgba(139,92,246,0.14);
+      outline: 1px solid rgba(139,92,246,0.30);
     }
-    .row:first-child{border-top:0}
-    .row:hover{background:rgba(255,255,255,0.04)}
-    .icon{
-      width:34px; height:34px; border-radius:12px; display:grid; place-items:center;
-      border:1px solid rgba(255,255,255,0.12); background:rgba(0,0,0,0.18);
-      font-family:var(--mono); font-size:12px; color:rgba(255,255,255,0.85);
-    }
-    .icon.dir{border-color:rgba(34,197,94,0.32); background:rgba(34,197,94,0.12)}
-    .icon.file{border-color:rgba(139,92,246,0.32); background:rgba(139,92,246,0.12)}
-    .name{display:flex; flex-direction:column; gap:2px; min-width:0;}
-    .name .primaryText{font-weight:650; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
-    .name .secondaryText{font-family:var(--mono); font-size:12px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+    .entry.selected .meta{ color: rgba(255,255,255,0.78); }
 
     /* Viewer */
-    .viewerTop{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:14px;}
-    .viewerTitle{display:flex; flex-direction:column; gap:2px; min-width:0;}
-    .viewerTitle .h{font-weight:650;}
-    .viewerTitle .p{font-family:var(--mono); font-size:12px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:48ch;}
-    .viewerBox{
-      border:1px solid var(--border);
-      border-radius:14px;
-      overflow:hidden;
-      background:rgba(255,255,255,0.03);
-      min-height: 520px;
-    }
-    .viewerEmpty{
-      padding:18px;
-      color:var(--muted);
-      font-family:var(--mono);
-      font-size:13px;
-    }
     iframe{
       width:100%;
-      height:520px;
+      height:100%;
       border:0;
       display:block;
-      background:rgba(0,0,0,0.10);
+      background: rgba(0,0,0,0.12);
     }
     pre{
       margin:0;
-      padding:16px;
-      font-family:var(--mono);
-      font-size:13px;
-      line-height:1.55;
-      white-space:pre-wrap;
-      word-break:break-word;
+      font-family: var(--mono);
+      font-size: 13px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-word;
     }
 
-    @media (max-width: 980px){
-      .layout{grid-template-columns: 1fr; }
-      .divider{border-left:0; border-top:1px solid var(--border);}
-      iframe{height:460px;}
-      .viewerBox{min-height:460px;}
+    /* Command line */
+    .cmdline{
+      position:absolute;
+      left: 16px;
+      right: 16px;
+      bottom: 14px;
+      height: var(--cmdH);
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.16);
+      background: rgba(0,0,0,0.55);
+      backdrop-filter: blur(10px);
+      display:flex;
+      align-items:center;
+      gap: 10px;
+      padding: 0 12px;
+      box-shadow: 0 10px 35px rgba(0,0,0,0.35);
+      font-family: var(--mono);
+      font-size: 13px;
+      color: rgba(255,255,255,0.90);
+    }
+    .cmdline.hidden{ display:none; }
+    .cmdprompt{ color: rgba(255,255,255,0.78); }
+    .cmdtext{
+      flex: 1;
+      min-width:0;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+    .cmderr{
+      color: rgba(239,68,68,0.90);
+      font-size: 12px;
+      margin-left:auto;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      max-width: 45%;
     }
   </style>
 </head>
 <body>
   <div class="app">
-    <header>
-      <div class="title">
-        <h1>File Explorer</h1>
-        <div id="path" class="path">/</div>
-      </div>
+    <div class="topbar">
+      <div class="brand">VimSplit Viewer</div>
+      <div id="globalHint" class="hint"></div>
       <div class="spacer"></div>
-      <button id="backBtn" class="btn" type="button">← Back</button>
-      <button id="refreshBtn" class="btn primary" type="button">⟳ Refresh</button>
-    </header>
+      <div id="modePill" class="pill">NORMAL</div>
+      <div class="pill">Ctrl+N explorer</div>
+      <div class="pill">: spl | vspl | q</div>
+      <div class="pill">j/k + Enter</div>
+      <div class="pill">Ctrl+B up</div>
+      <div class="pill">Ctrl+1..9 focus</div>
+    </div>
 
-    <div class="layout">
-      <!-- Left pane: list -->
-      <main class="pane">
-        <div class="toolbar">
-          <div class="search">
-            <span class="hint">Search</span>
-            <input id="searchInput" placeholder="Filter by name…" autocomplete="off" />
-          </div>
-          <span id="countChip" class="chip">0 items</span>
-        </div>
+    <div class="workspaceWrap">
+      <div class="workspace" id="workspace"></div>
 
-        <div id="state" class="state">Loading…</div>
-        <div id="list" class="list" style="display:none;"></div>
-      </main>
-
-      <!-- Right pane: viewer -->
-      <aside class="pane divider">
-        <div class="viewerTop">
-          <div class="viewerTitle">
-            <div class="h">Viewer</div>
-            <div id="selectedPath" class="p">No file selected</div>
-          </div>
-          <div class="spacer"></div>
-          <button id="openNewTabBtn" class="btn" type="button" disabled>Open in new tab</button>
-          <button id="clearBtn" class="btn danger" type="button" disabled>Clear</button>
-        </div>
-
-        <div id="viewer" class="viewerBox">
-          <div class="viewerEmpty">
-            Click a <span class="chip dir">dir</span> to navigate, or click a <span class="chip file">file</span> to preview it here.
-            <br><br>
-            Your backend should implement <span class="chip">GET /api/file?path=...</span>.
-          </div>
-        </div>
-      </aside>
+      <div class="cmdline hidden" id="cmdline">
+        <div class="cmdprompt">:</div>
+        <div class="cmdtext" id="cmdtext"></div>
+        <div class="cmderr" id="cmderr"></div>
+      </div>
     </div>
   </div>
 
   <script>
-    // ==================
-    // Config (frontend)
-    // ==================
+    // =========================
+    // Backend API endpoints
+    // =========================
     const API_LIST = "/api/list";
     const API_FILE = "/api/file";
+
+    // Client "root" path - your backend can interpret "/" however you want
     const DEFAULT_PATH = "/";
 
-    // ==================
-    // State
-    // ==================
-    let currentPath = DEFAULT_PATH;
-    let currentItems = [];
-    let selectedFilePath = null;
-    let selectedFileObjectUrl = null;
+    // =========================
+    // State (editor-like)
+    // =========================
+    const state = {
+      mode: "normal",         // "normal" | "command"
+      cmd: "",
+      cmdErr: "",
+      nextId: 1,
+      focusId: null,
 
-    // ==================
-    // Helpers
-    // ==================
-    function joinPath(base, name) {
-      if (base === "/") return "/" + name;
+      // Split tree root
+      root: null,
+
+      // Windows dictionary
+      windows: new Map(), // id -> window object
+    };
+
+    // Window object shape:
+    // {
+    //   id: number,
+    //   kind: "empty" | "explorer" | "viewer",
+    //   title: string,
+    //   explorer?: { cwd, items, cursor, loading, err },
+    //   viewer?: { path, contentType, objectUrl, text }
+    // }
+
+    // Split tree node:
+    // - Leaf: { type:"leaf", winId:number }
+    // - Split: { type:"split", dir:"v"|"h", a:node, b:node }
+
+    // =========================
+    // Utility helpers
+    // =========================
+    function clamp(n, lo, hi){ return Math.max(lo, Math.min(hi, n)); }
+
+    function escapeHtml(s){
+      return String(s).replace(/[&<>"']/g, ch => ({
+        "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+      }[ch]));
+    }
+
+    function joinPath(base, name){
+      if (!base || base === "/") return "/" + name;
       if (base.endsWith("/")) return base + name;
       return base + "/" + name;
     }
 
-    function parentPath(p) {
+    function parentPath(p){
       if (!p || p === "/") return "/";
       const trimmed = p.endsWith("/") ? p.slice(0, -1) : p;
       const idx = trimmed.lastIndexOf("/");
@@ -223,244 +442,691 @@
       return trimmed.slice(0, idx);
     }
 
-    function escapeHtml(s) {
-      return s.replace(/[&<>"']/g, (ch) => ({
-        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
-      }[ch]));
+    function getFocusedWin(){
+      return state.windows.get(state.focusId) || null;
     }
 
-    function setState(text, isError = false) {
-      const el = document.getElementById("state");
-      el.style.display = "block";
-      el.textContent = text;
-      el.style.borderColor = isError ? "rgba(239,68,68,0.45)" : "rgba(255,255,255,0.18)";
-      document.getElementById("list").style.display = "none";
-    }
-
-    function setListVisible() {
-      document.getElementById("state").style.display = "none";
-      document.getElementById("list").style.display = "block";
-    }
-
-    function updateHeader(path) {
-      document.getElementById("path").textContent = path;
-      document.getElementById("backBtn").disabled = (path === "/");
-    }
-
-    function updateCount(n) {
-      document.getElementById("countChip").textContent = `${n} item${n === 1 ? "" : "s"}`;
-    }
-
-    function setSelectedPathText(text) {
-      document.getElementById("selectedPath").textContent = text;
-    }
-
-    function enableViewerButtons(enabled) {
-      document.getElementById("clearBtn").disabled = !enabled;
-      document.getElementById("openNewTabBtn").disabled = !enabled;
-    }
-
-    function clearObjectUrlIfAny() {
-      if (selectedFileObjectUrl) {
-        URL.revokeObjectURL(selectedFileObjectUrl);
-        selectedFileObjectUrl = null;
+    function setMode(mode){
+      state.mode = mode;
+      document.getElementById("modePill").textContent = mode.toUpperCase();
+      if (mode === "command"){
+        showCmdline();
+      } else {
+        hideCmdline();
       }
     }
 
-    // ==================
-    // API calls
-    // ==================
-    async function fetchListing(path) {
+    function showCmdline(){
+      const el = document.getElementById("cmdline");
+      el.classList.remove("hidden");
+      updateCmdline();
+    }
+
+    function hideCmdline(){
+      const el = document.getElementById("cmdline");
+      el.classList.add("hidden");
+      state.cmdErr = "";
+      updateCmdline();
+    }
+
+    function updateCmdline(){
+      document.getElementById("cmdtext").textContent = state.cmd;
+      document.getElementById("cmderr").textContent = state.cmdErr || "";
+    }
+
+    function setGlobalHint(text){
+      document.getElementById("globalHint").textContent = text || "";
+    }
+
+    // =========================
+    // Tree operations
+    // =========================
+    function makeWindow(kind){
+      const id = state.nextId++;
+      const w = { id, kind, title: "" };
+
+      if (kind === "empty"){
+        w.title = "No buffer";
+      } else if (kind === "explorer"){
+        w.title = "Explorer";
+        w.explorer = { cwd: DEFAULT_PATH, items: [], cursor: 0, loading: false, err: "" };
+      } else if (kind === "viewer"){
+        w.title = "Viewer";
+        w.viewer = { path: "", contentType: "", objectUrl: null, text: "" };
+      }
+
+      state.windows.set(id, w);
+      if (state.focusId == null) state.focusId = id;
+      return w;
+    }
+
+    function makeLeaf(winId){
+      return { type:"leaf", winId };
+    }
+
+    function makeSplit(dir, a, b){
+      return { type:"split", dir, a, b };
+    }
+
+    function findLeafPath(node, targetWinId, path = []){
+      // returns array of nodes along path; last element is the leaf node itself
+      if (!node) return null;
+      if (node.type === "leaf"){
+        return node.winId === targetWinId ? [...path, node] : null;
+      }
+      const left = findLeafPath(node.a, targetWinId, [...path, node]);
+      if (left) return left;
+      return findLeafPath(node.b, targetWinId, [...path, node]);
+    }
+
+    function splitFocused(dir){
+      const focusedId = state.focusId;
+      if (!focusedId) return;
+
+      const newWin = makeWindow("empty");
+      const root = state.root;
+      const leafPath = findLeafPath(root, focusedId);
+      if (!leafPath) return;
+
+      const leaf = leafPath[leafPath.length - 1];
+      // Replace that leaf with a split node: existing on a, new on b
+      const newNode = makeSplit(dir, makeLeaf(leaf.winId), makeLeaf(newWin.id));
+
+      // Patch into tree
+      if (leafPath.length === 1){
+        state.root = newNode;
+      } else {
+        const parent = leafPath[leafPath.length - 2];
+        // parent is split
+        if (parent.a === leaf) parent.a = newNode;
+        else parent.b = newNode;
+      }
+
+      // Focus stays on original, like vim (you can change if you want)
+      state.focusId = focusedId;
+      render();
+      setGlobalHint(`${dir === "v" ? "Vertical" : "Horizontal"} split created (new window ${newWin.id}).`);
+    }
+
+    function collectLeafIds(node, out = []){
+      if (!node) return out;
+      if (node.type === "leaf"){ out.push(node.winId); return out; }
+      collectLeafIds(node.a, out);
+      collectLeafIds(node.b, out);
+      return out;
+    }
+
+    function removeFocusedWindow(){
+      const focusedId = state.focusId;
+      if (!focusedId) return;
+
+      // Don't remove the last remaining window
+      const leafIds = collectLeafIds(state.root);
+      if (leafIds.length <= 1){
+        setGlobalHint("Cannot close the last window.");
+        return;
+      }
+
+      // Find path to leaf
+      const leafPath = findLeafPath(state.root, focusedId);
+      if (!leafPath || leafPath.length < 2){
+        setGlobalHint("Internal: couldn't find window in tree.");
+        return;
+      }
+
+      const leaf = leafPath[leafPath.length - 1];
+      const parent = leafPath[leafPath.length - 2]; // split node
+      const sibling = (parent.a === leaf) ? parent.b : parent.a;
+
+      // Replace parent with sibling in grandparent
+      if (leafPath.length === 2){
+        // parent is root
+        state.root = sibling;
+      } else {
+        const grand = leafPath[leafPath.length - 3];
+        if (grand.a === parent) grand.a = sibling;
+        else grand.b = sibling;
+      }
+
+      // Cleanup resources (blob URLs)
+      const w = state.windows.get(focusedId);
+      if (w?.kind === "viewer" && w.viewer?.objectUrl){
+        URL.revokeObjectURL(w.viewer.objectUrl);
+      }
+
+      state.windows.delete(focusedId);
+
+      // Choose a new focus: first leaf id
+      const newLeafIds = collectLeafIds(state.root);
+      state.focusId = newLeafIds[0] || null;
+
+      render();
+      setGlobalHint(`Closed window ${focusedId}.`);
+    }
+
+    function focusWindow(id){
+      if (!state.windows.has(id)) return;
+      state.focusId = id;
+      render(); // just to update focus highlight/status
+      setGlobalHint(`Focused window ${id}.`);
+    }
+
+    // =========================
+    // Backend calls
+    // =========================
+    async function fetchListing(path){
       const url = new URL(API_LIST, window.location.origin);
       url.searchParams.set("path", path);
-
-      const res = await fetch(url.toString(), { method: "GET" });
-      if (!res.ok) {
-        const txt = await res.text().catch(() => "");
-        throw new Error(`Backend error (${res.status}): ${txt || "No details"}`);
+      const res = await fetch(url.toString(), { method:"GET" });
+      if (!res.ok){
+        const txt = await res.text().catch(()=> "");
+        throw new Error(txt || `HTTP ${res.status}`);
       }
       return res.json();
     }
 
-    async function fetchFileBlob(path) {
+    async function fetchFile(path){
       const url = new URL(API_FILE, window.location.origin);
       url.searchParams.set("path", path);
-
-      const res = await fetch(url.toString(), { method: "GET" });
-      if (!res.ok) {
-        const txt = await res.text().catch(() => "");
-        throw new Error(`Backend error (${res.status}): ${txt || "No details"}`);
+      const res = await fetch(url.toString(), { method:"GET" });
+      if (!res.ok){
+        const txt = await res.text().catch(()=> "");
+        throw new Error(txt || `HTTP ${res.status}`);
       }
-
       const contentType = res.headers.get("Content-Type") || "application/octet-stream";
       const blob = await res.blob();
       return { blob, contentType, url: url.toString() };
     }
 
-    // ==================
-    // Render list
-    // ==================
-    function renderList(items) {
-      currentItems = items;
+    // =========================
+    // Window actions
+    // =========================
+    async function ensureExplorerInFocused(){
+      const w = getFocusedWin();
+      if (!w) return;
 
-      const listEl = document.getElementById("list");
-      listEl.innerHTML = "";
+      if (w.kind !== "explorer"){
+        // If viewer had a blob, cleanup
+        if (w.kind === "viewer" && w.viewer?.objectUrl){
+          URL.revokeObjectURL(w.viewer.objectUrl);
+        }
+        // Convert window to explorer
+        w.kind = "explorer";
+        w.title = "Explorer";
+        w.explorer = { cwd: DEFAULT_PATH, items: [], cursor: 0, loading: false, err: "" };
+        delete w.viewer;
+      }
 
-      const filter = document.getElementById("searchInput").value.trim().toLowerCase();
-      const filtered = filter
-        ? items.filter(it => (it.name || "").toLowerCase().includes(filter))
-        : items;
+      // Load listing if empty
+      if (w.explorer.items.length === 0 && !w.explorer.loading){
+        await loadExplorerListing(w, w.explorer.cwd);
+      } else {
+        render();
+      }
+    }
 
-      updateCount(filtered.length);
+    async function loadExplorerListing(win, cwd){
+      win.explorer.loading = true;
+      win.explorer.err = "";
+      win.explorer.cwd = cwd;
+      render();
 
-      if (filtered.length === 0) {
-        setState(filter ? "No matches." : "Empty directory.");
+      try{
+        const data = await fetchListing(cwd);
+        const items = Array.isArray(data.items) ? data.items : [];
+        // Sort: dirs first, then files, alpha
+        items.sort((a,b) => {
+          if (a.type !== b.type) return a.type === "dir" ? -1 : 1;
+          return String(a.name).localeCompare(String(b.name));
+        });
+
+        win.explorer.items = items;
+        win.explorer.cursor = clamp(win.explorer.cursor, 0, Math.max(0, items.length - 1));
+        win.explorer.loading = false;
+        render();
+        setGlobalHint(`Explorer loaded: ${data.path ?? cwd}`);
+      } catch(err){
+        win.explorer.loading = false;
+        win.explorer.err = err.message || "Failed to load directory";
+        render();
+        setGlobalHint(`Explorer error: ${win.explorer.err}`);
+      }
+    }
+
+    async function explorerMove(delta){
+      const w = getFocusedWin();
+      if (!w || w.kind !== "explorer") return;
+      const n = w.explorer.items.length;
+      if (n === 0) return;
+      w.explorer.cursor = clamp(w.explorer.cursor + delta, 0, n - 1);
+      render();
+      scrollCursorIntoView(w.id);
+    }
+
+    function scrollCursorIntoView(winId){
+      const container = document.querySelector(`[data-win="${winId}"] .content`);
+      if (!container) return;
+      const sel = container.querySelector(`.entry.selected`);
+      if (!sel) return;
+      const selRect = sel.getBoundingClientRect();
+      const contRect = container.getBoundingClientRect();
+      if (selRect.top < contRect.top){
+        sel.scrollIntoView({ block:"nearest" });
+      } else if (selRect.bottom > contRect.bottom){
+        sel.scrollIntoView({ block:"nearest" });
+      }
+    }
+
+    async function explorerEnter(){
+      const w = getFocusedWin();
+      if (!w || w.kind !== "explorer") return;
+      const items = w.explorer.items;
+      if (!items.length) return;
+
+      const cur = items[w.explorer.cursor];
+      if (!cur) return;
+
+      if (cur.type === "dir"){
+        const next = joinPath(w.explorer.cwd, cur.name);
+        await loadExplorerListing(w, next);
         return;
       }
 
-      setListVisible();
+      // open file in the same window (convert to viewer)
+      await openFileInWindow(w.id, joinPath(w.explorer.cwd, cur.name));
+    }
 
-      for (const it of filtered) {
-        const type = it.type === "dir" ? "dir" : "file";
-        const iconText = type === "dir" ? "DIR" : "FILE";
-        const full = joinPath(currentPath, it.name);
+    async function explorerUp(){
+      const w = getFocusedWin();
+      if (!w || w.kind !== "explorer") return;
+      const up = parentPath(w.explorer.cwd);
+      await loadExplorerListing(w, up);
+    }
 
-        const row = document.createElement("div");
-        row.className = "row";
-        row.innerHTML = `
-          <div class="icon ${type}">${iconText}</div>
-          <div class="name">
-            <div class="primaryText">${escapeHtml(it.name || "")}</div>
-            <div class="secondaryText">${escapeHtml(full)}</div>
-          </div>
-          <div style="text-align:right;">
-            <span class="chip ${type}">${type}</span>
+    async function openFileInWindow(winId, filePath){
+      const w = state.windows.get(winId);
+      if (!w) return;
+
+      // Convert window to viewer
+      // Cleanup old blob URL if exists
+      if (w.kind === "viewer" && w.viewer?.objectUrl){
+        URL.revokeObjectURL(w.viewer.objectUrl);
+      }
+
+      w.kind = "viewer";
+      w.title = "Viewer";
+      w.viewer = { path: filePath, contentType: "", objectUrl: null, text: "" };
+      delete w.explorer;
+
+      render();
+      setGlobalHint(`Opening ${filePath}…`);
+
+      try{
+        const { blob, contentType } = await fetchFile(filePath);
+        w.viewer.contentType = contentType;
+
+        const ct = (contentType || "").toLowerCase();
+        if (ct.includes("application/pdf")){
+          w.viewer.objectUrl = URL.createObjectURL(blob);
+        } else if (ct.startsWith("text/") || ct.includes("json") || ct.includes("xml")){
+          w.viewer.text = await blob.text();
+        } else {
+          // fallback: still provide blob URL so user can open in a new tab later if you add it
+          w.viewer.objectUrl = URL.createObjectURL(blob);
+        }
+
+        render();
+        setGlobalHint(`Opened ${filePath}`);
+      } catch(err){
+        // show error inside viewer
+        w.viewer.text = `Failed to open file:\n${err.message || err}`;
+        w.viewer.contentType = "text/plain";
+        render();
+        setGlobalHint(`Open failed: ${err.message || err}`);
+      }
+    }
+
+    // =========================
+    // Rendering
+    // =========================
+    function render(){
+      const ws = document.getElementById("workspace");
+      ws.innerHTML = "";
+      if (!state.root){
+        ws.innerHTML = `<div class="emptyMsg">Internal error: no root.</div>`;
+        return;
+      }
+      ws.appendChild(renderNode(state.root));
+      updateCmdline();
+      updateModePill();
+    }
+
+    function updateModePill(){
+      document.getElementById("modePill").textContent = state.mode.toUpperCase();
+    }
+
+    function renderNode(node){
+      if (node.type === "leaf"){
+        const w = state.windows.get(node.winId);
+        return renderPane(w);
+      }
+
+      const el = document.createElement("div");
+      el.className = `split ${node.dir}`;
+      el.appendChild(renderNode(node.a));
+      el.appendChild(renderNode(node.b));
+      return el;
+    }
+
+    function renderPane(w){
+      const pane = document.createElement("div");
+      pane.className = "pane" + (w.id === state.focusId ? " focused" : "");
+      pane.dataset.win = String(w.id);
+
+      // click focus
+      pane.addEventListener("mousedown", () => {
+        if (state.focusId !== w.id){
+          state.focusId = w.id;
+          render();
+        }
+      });
+
+      const status = document.createElement("div");
+      status.className = "statusline";
+
+      const left = document.createElement("div");
+      left.className = "statusLeft";
+
+      const wid = document.createElement("div");
+      wid.className = "wid";
+      wid.textContent = String(w.id);
+
+      const wtype = document.createElement("div");
+      wtype.className = "wtype " + w.kind;
+      wtype.textContent =
+        w.kind === "explorer" ? "EXPLORER" :
+        w.kind === "viewer" ? "VIEWER" : "EMPTY";
+
+      const title = document.createElement("div");
+      title.className = "wtitle";
+
+      if (w.kind === "explorer"){
+        title.textContent = w.explorer.cwd;
+      } else if (w.kind === "viewer"){
+        title.textContent = w.viewer.path || "No file";
+      } else {
+        title.textContent = "No buffer";
+      }
+
+      left.appendChild(wid);
+      left.appendChild(wtype);
+      left.appendChild(title);
+
+      const right = document.createElement("div");
+      right.className = "statusRight";
+      right.innerHTML = `<span>${state.focusId === w.id ? "FOCUS" : ""}</span>`;
+
+      status.appendChild(left);
+      status.appendChild(right);
+
+      const content = document.createElement("div");
+      content.className = "content";
+
+      if (w.kind === "empty"){
+        content.innerHTML = `
+          <div class="emptyMsg">
+            <div style="margin-bottom:10px;"><strong>Empty window</strong></div>
+            <div style="margin-bottom:8px;">Try:</div>
+            <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
+              <span class="kbd">Ctrl+N</span> <span class="kbd">:</span> <span class="kbd">vspl</span> <span class="kbd">spl</span> <span class="kbd">q</span>
+            </div>
+            <div>Focus windows with <span class="kbd">Ctrl+1</span>…<span class="kbd">Ctrl+9</span>.</div>
           </div>
         `;
-
-        row.addEventListener("click", () => {
-          if (type === "dir") {
-            navigateTo(full);
-          } else {
-            previewFile(full);
-          }
-        });
-
-        listEl.appendChild(row);
       }
-    }
 
-    // ==================
-    // Viewer rendering
-    // ==================
-    function showViewerEmpty(message) {
-      const viewer = document.getElementById("viewer");
-      viewer.innerHTML = `<div class="viewerEmpty">${escapeHtml(message)}</div>`;
-    }
+      if (w.kind === "explorer"){
+        const ex = w.explorer;
+        const header = document.createElement("div");
+        header.className = "explorerHeader";
+        header.innerHTML = `
+          <div class="cwd">${escapeHtml(ex.cwd)}</div>
+          <div class="smallHint">${ex.loading ? "loading…" : (ex.err ? "error" : "j/k, Enter")}</div>
+        `;
 
-    function showViewerText(text) {
-      const viewer = document.getElementById("viewer");
-      viewer.innerHTML = `<pre>${escapeHtml(text)}</pre>`;
-    }
+        content.appendChild(header);
 
-    function showViewerPdf(objectUrl) {
-      const viewer = document.getElementById("viewer");
-      viewer.innerHTML = `<iframe title="PDF preview" src="${objectUrl}"></iframe>`;
-    }
+        if (ex.err){
+          const err = document.createElement("div");
+          err.className = "emptyMsg";
+          err.style.borderColor = "rgba(239,68,68,0.35)";
+          err.innerHTML = `<div style="color: rgba(239,68,68,0.9); font-weight:700; margin-bottom:6px;">Explorer error</div>
+                           <div style="white-space:pre-wrap;">${escapeHtml(ex.err)}</div>`;
+          content.appendChild(err);
+        } else if (ex.loading && ex.items.length === 0){
+          const msg = document.createElement("div");
+          msg.className = "emptyMsg";
+          msg.textContent = "Loading directory…";
+          content.appendChild(msg);
+        } else if (ex.items.length === 0){
+          const msg = document.createElement("div");
+          msg.className = "emptyMsg";
+          msg.textContent = "Empty directory.";
+          content.appendChild(msg);
+        } else {
+          const list = document.createElement("div");
+          list.className = "list";
 
-    // ==================
-    // Navigation + actions
-    // ==================
-    async function navigateTo(path) {
-      try {
-        setState("Loading…");
-        const data = await fetchListing(path);
+          ex.items.forEach((it, idx) => {
+            const row = document.createElement("div");
+            row.className = "entry" + (idx === ex.cursor ? " selected" : "");
+            const iconText = it.type === "dir" ? "DIR" : "FILE";
+            row.innerHTML = `
+              <div class="icon ${it.type}">${iconText}</div>
+              <div class="name">${escapeHtml(it.name)}</div>
+              <div class="meta">${it.type}</div>
+            `;
 
-        currentPath = data.path ?? path;
-        updateHeader(currentPath);
+            // mouse click selects + double click enters/opens
+            row.addEventListener("mousedown", (ev) => {
+              ev.preventDefault();
+              ex.cursor = idx;
+              state.focusId = w.id;
+              render();
+            });
+            row.addEventListener("dblclick", async () => {
+              ex.cursor = idx;
+              state.focusId = w.id;
+              render();
+              await explorerEnter();
+            });
 
-        renderList(Array.isArray(data.items) ? data.items : []);
-      } catch (err) {
-        setState(err.message || "Failed to load directory.", true);
+            list.appendChild(row);
+          });
+
+          content.appendChild(list);
+        }
       }
+
+      if (w.kind === "viewer"){
+        const v = w.viewer;
+        const ct = (v.contentType || "").toLowerCase();
+
+        if (ct.includes("application/pdf") && v.objectUrl){
+          const frame = document.createElement("iframe");
+          frame.title = "PDF preview";
+          frame.src = v.objectUrl;
+          content.appendChild(frame);
+        } else if (ct.startsWith("text/") || ct.includes("json") || ct.includes("xml") || v.text){
+          const pre = document.createElement("pre");
+          pre.textContent = v.text || "";
+          content.appendChild(pre);
+        } else if (v.objectUrl){
+          // Fallback: show in iframe anyway
+          const frame = document.createElement("iframe");
+          frame.title = "File preview";
+          frame.src = v.objectUrl;
+          content.appendChild(frame);
+        } else {
+          const msg = document.createElement("div");
+          msg.className = "emptyMsg";
+          msg.textContent = "No preview available.";
+          content.appendChild(msg);
+        }
+      }
+
+      pane.appendChild(status);
+      pane.appendChild(content);
+      return pane;
     }
 
-    async function previewFile(fullPath) {
-      try {
-        // UI updates first
-        selectedFilePath = fullPath;
-        setSelectedPathText(fullPath);
-        enableViewerButtons(true);
+    // =========================
+    // Command execution
+    // =========================
+    function execCommand(raw){
+      const cmd = (raw || "").trim();
+      state.cmdErr = "";
 
-        // Clean old preview URL (important for memory)
-        clearObjectUrlIfAny();
+      if (!cmd){
+        setGlobalHint("");
+        return;
+      }
 
-        // Show loading in viewer
-        showViewerEmpty("Loading file preview…");
+      // Simple commands: q, spl, vspl
+      if (cmd === "q"){
+        removeFocusedWindow();
+        return;
+      }
+      if (cmd === "spl"){
+        splitFocused("h");
+        return;
+      }
+      if (cmd === "vspl"){
+        splitFocused("v");
+        return;
+      }
 
-        // Ask backend for file bytes
-        const { blob, contentType, url } = await fetchFileBlob(fullPath);
+      state.cmdErr = `E492: Not an editor command: ${cmd}`;
+      setGlobalHint(state.cmdErr);
+      updateCmdline();
+    }
 
-        // Set "Open in new tab" to the backend endpoint (stream)
-        const openBtn = document.getElementById("openNewTabBtn");
-        openBtn.onclick = () => window.open(url, "_blank", "noopener,noreferrer");
+    // =========================
+    // Key handling
+    // =========================
+    function isTypingTarget(ev){
+      // We don't use inputs, but keep this for safety
+      const t = ev.target;
+      if (!t) return false;
+      const tag = (t.tagName || "").toLowerCase();
+      return tag === "input" || tag === "textarea" || t.isContentEditable;
+    }
 
-        // Decide how to preview
-        const lowerType = (contentType || "").toLowerCase();
+    window.addEventListener("keydown", async (ev) => {
+      // Don't hijack keys while user is in a text input (future-proof)
+      if (isTypingTarget(ev)) return;
 
-        if (lowerType.includes("application/pdf")) {
-          // PDF preview via iframe using a blob URL
-          selectedFileObjectUrl = URL.createObjectURL(blob);
-          showViewerPdf(selectedFileObjectUrl);
+      // Command mode behavior
+      if (state.mode === "command"){
+        ev.preventDefault();
+
+        if (ev.key === "Escape"){
+          state.cmd = "";
+          state.cmdErr = "";
+          setMode("normal");
+          setGlobalHint("");
           return;
         }
-
-        if (lowerType.startsWith("text/") || lowerType.includes("json") || lowerType.includes("xml")) {
-          // Text preview: read blob as text
-          const text = await blob.text();
-          showViewerText(text);
+        if (ev.key === "Enter"){
+          const toRun = state.cmd;
+          state.cmd = "";
+          setMode("normal");
+          execCommand(toRun);
           return;
         }
-
-        // Fallback: can't preview this type nicely
-        showViewerEmpty(`No preview for Content-Type: ${contentType}. Use "Open in new tab".`);
-      } catch (err) {
-        showViewerEmpty(err.message || "Failed to preview file.");
+        if (ev.key === "Backspace"){
+          state.cmd = state.cmd.slice(0, -1);
+          updateCmdline();
+          return;
+        }
+        if (ev.key.length === 1 && !ev.ctrlKey && !ev.metaKey && !ev.altKey){
+          state.cmd += ev.key;
+          updateCmdline();
+          return;
+        }
+        return;
       }
+
+      // Normal mode
+      // Focus window with Ctrl+1..9
+      if (ev.ctrlKey && !ev.shiftKey && !ev.altKey && !ev.metaKey){
+        const digit = ev.key;
+        if (digit >= "1" && digit <= "9"){
+          ev.preventDefault();
+          focusWindow(Number(digit));
+          return;
+        }
+      }
+
+      // Ctrl+N: open explorer in focused window
+      if (ev.ctrlKey && !ev.shiftKey && !ev.altKey && !ev.metaKey && (ev.key === "n" || ev.key === "N")){
+        ev.preventDefault();
+        await ensureExplorerInFocused();
+        return;
+      }
+
+      // Ctrl+B: go up (explorer only)
+      if (ev.ctrlKey && !ev.shiftKey && !ev.altKey && !ev.metaKey && (ev.key === "b" || ev.key === "B")){
+        ev.preventDefault();
+        await explorerUp();
+        return;
+      }
+
+      // ":" enters command mode
+      if (!ev.ctrlKey && !ev.metaKey && !ev.altKey && ev.key === ":"){
+        ev.preventDefault();
+        state.cmd = "";
+        state.cmdErr = "";
+        setMode("command");
+        setGlobalHint("COMMAND");
+        return;
+      }
+
+      // j/k navigation (explorer only)
+      if (!ev.ctrlKey && !ev.metaKey && !ev.altKey && (ev.key === "j" || ev.key === "k")){
+        const w = getFocusedWin();
+        if (w && w.kind === "explorer"){
+          ev.preventDefault();
+          await explorerMove(ev.key === "j" ? +1 : -1);
+        }
+        return;
+      }
+
+      // Enter (explorer only)
+      if (!ev.ctrlKey && !ev.metaKey && !ev.altKey && ev.key === "Enter"){
+        const w = getFocusedWin();
+        if (w && w.kind === "explorer"){
+          ev.preventDefault();
+          await explorerEnter();
+        }
+        return;
+      }
+    });
+
+    // =========================
+    // Init
+    // =========================
+    function init(){
+      // Start with one empty window
+      const w = makeWindow("empty");
+      state.root = makeLeaf(w.id);
+      state.focusId = w.id;
+
+      setGlobalHint("Ready. Ctrl+N to open explorer. ':' for commands.");
+      render();
     }
 
-    function clearSelection() {
-      selectedFilePath = null;
-      setSelectedPathText("No file selected");
-      enableViewerButtons(false);
-      clearObjectUrlIfAny();
-      showViewerEmpty("Click a file to preview it here.");
-      document.getElementById("openNewTabBtn").onclick = null;
-    }
-
-    // ==================
-    // Wire UI
-    // ==================
-    document.getElementById("backBtn").addEventListener("click", () => {
-      navigateTo(parentPath(currentPath));
-    });
-
-    document.getElementById("refreshBtn").addEventListener("click", () => {
-      navigateTo(currentPath);
-    });
-
-    document.getElementById("searchInput").addEventListener("input", () => {
-      renderList(currentItems);
-    });
-
-    document.getElementById("clearBtn").addEventListener("click", clearSelection);
-
-    // ==================
-    // Boot
-    // ==================
-    updateHeader(currentPath);
-    clearSelection();
-    navigateTo(DEFAULT_PATH);
+    init();
   </script>
 </body>
 </html>

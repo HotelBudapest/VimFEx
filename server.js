@@ -13,6 +13,8 @@ const server = http.createServer(async (req, res) => {
         return;
     }
     if (req.method === "GET" && req.url === "/") {
+        const getRootDir = () => path.parse(process.cwd()).root;
+        console.log(getRootDir())
         const htmlPath = path.join(process.cwd(), "index.html");
         const html = await fs.readFile(htmlPath, "utf-8");
 
@@ -27,7 +29,7 @@ const server = http.createServer(async (req, res) => {
         console.log(url);
         if (path === "/") {
             console.log("hi");
-            const path = process.cwd();
+            const path = "/";
             res.writeHead(200, {"Content-Type": "application/json"});
             const files = await fs.readdir(path, { withFileTypes: true });
 
