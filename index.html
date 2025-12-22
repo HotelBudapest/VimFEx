@@ -355,7 +355,7 @@
 <body>
   <div class="app">
     <div class="topbar">
-      <div class="brand">VimSplit Viewer</div>
+      <div class="brand">VimFEx</div>
       <div id="globalHint" class="hint"></div>
       <div class="spacer"></div>
       <div id="modePill" class="pill">NORMAL</div>
@@ -505,7 +505,7 @@
     }
 
     function makeSplit(dir, a, b){
-      return { type:"split", dir, a, b };
+      return { type:"split", dir, a, b, wA: 1, wB: 1 };
     }
 
     function findLeafPath(node, targetWinId, path = []){
@@ -517,6 +517,68 @@
       const left = findLeafPath(node.a, targetWinId, [...path, node]);
       if (left) return left;
       return findLeafPath(node.b, targetWinId, [...path, node]);
+    }
+
+    function clampWeight(x){
+      // keep panes from collapsing too much
+      return Math.max(0.25, Math.min(8, x));
+    }
+
+    function scrollFocusedViewer(deltaLines){
+      const w = getFocusedWin();
+      if (!w || w.kind !== "viewer") return false;
+
+      const pane = document.querySelector(`[data-win="${w.id}"]`);
+      if (!pane) return false;
+
+      const content = pane.querySelector(".content");
+      if (!content) return false;
+
+      const px = deltaLines * 28; // scroll step (px); tweak to taste
+
+      // If there's an iframe (PDF), try to scroll inside it.
+      const frame = content.querySelector("iframe");
+      if (frame && frame.contentWindow){
+        frame.contentWindow.scrollBy(0, px);
+        return true;
+      }
+
+      // Otherwise scroll the content container (text viewer lives here)
+      content.scrollBy({ top: px, behavior: "auto" });
+      return true;
+    }
+
+    function resizeFocused(dir, delta){
+      const focusedId = state.focusId;
+      if (!focusedId) return;
+
+      const path = findLeafPath(state.root, focusedId);
+      if (!path) return;
+
+      // Walk upward from leaf to root to find nearest split of the right direction
+      // path looks like: [split, split, ..., leaf]
+      for (let i = path.length - 2; i >= 0; i--){
+        const node = path[i];
+        if (node.type !== "split") continue;
+        if (node.dir !== dir) continue;
+
+        const child = path[i + 1]; // this is the subtree we came from (either node.a or node.b)
+        const focusedIsA = (node.a === child);
+
+        // If focused pane should "grow", increase its weight, decrease sibling (or vice versa)
+        if (focusedIsA){
+          node.wA = clampWeight((node.wA ?? 1) + delta);
+          node.wB = clampWeight((node.wB ?? 1) - delta);
+        } else {
+          node.wB = clampWeight((node.wB ?? 1) + delta);
+          node.wA = clampWeight((node.wA ?? 1) - delta);
+        }
+
+        render();
+        return;
+      }
+
+      setGlobalHint(`No ${dir === "v" ? "vertical" : "horizontal"} split to resize near focused window.`);
     }
 
     function splitFocused(dir){
@@ -813,8 +875,15 @@
 
       const el = document.createElement("div");
       el.className = `split ${node.dir}`;
-      el.appendChild(renderNode(node.a));
-      el.appendChild(renderNode(node.b));
+      const childA = renderNode(node.a);
+      const childB = renderNode(node.b);
+
+      // flex-grow weights control how much space each side gets
+      childA.style.flexGrow = String(node.wA ?? 1);
+      childB.style.flexGrow = String(node.wB ?? 1);
+
+      el.appendChild(childA);
+      el.appendChild(childB);
       return el;
     }
 
@@ -1092,13 +1161,38 @@
         return;
       }
 
-      // j/k navigation (explorer only)
       if (!ev.ctrlKey && !ev.metaKey && !ev.altKey && (ev.key === "j" || ev.key === "k")){
         const w = getFocusedWin();
-        if (w && w.kind === "explorer"){
+        if (!w) return;
+
+        // Explorer: move cursor
+        if (w.kind === "explorer"){
           ev.preventDefault();
           await explorerMove(ev.key === "j" ? +1 : -1);
+          return;
         }
+
+        // Viewer: scroll
+        if (w.kind === "viewer"){
+          ev.preventDefault();
+          scrollFocusedViewer(ev.key === "j" ? +1 : -1);
+          return;
+        }
+
+        return;
+      }
+
+      if (!ev.ctrlKey && !ev.metaKey && !ev.altKey && !ev.shiftKey &&
+          (ev.key === "H" || ev.key === "L" || ev.key === "J" || ev.key === "K")) {
+
+        ev.preventDefault();
+        const step = 0.15; // tweak to taste
+
+        if (ev.key === "H") resizeFocused("v", -step); // shrink width
+        if (ev.key === "L") resizeFocused("v", +step); // grow width
+        if (ev.key === "J") resizeFocused("h", -step); // shrink height
+        if (ev.key === "K") resizeFocused("h", +step); // grow height
+
         return;
       }
 
