@@ -23,6 +23,14 @@ const server = http.createServer(async (req, res) => {
         return;
     }
 
+    if (req.method === "GET" && req.url === "/index.js") {
+        const jsPath = path.join(process.cwd(), "index.js");
+        const js = await fs.readFile(jsPath, "utf-8");
+        res.writeHead(200, { "Content-Type": "text/javascript; charset=utf-8" });
+        res.end(js);
+        return;
+    }
+
     if (req.method === "GET" && req.url.startsWith("/api/list")) {
         const url = new URL(req.url, `http://${req.headers.host}`);
         const path = url.searchParams.get("path");
