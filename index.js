@@ -454,7 +454,8 @@ async function openFileInWindow(winId, filePath){
     contentType: "",
     objectUrl: null,
     text: "",
-    pdfBlob: null
+    pdfBlob: null,
+    pdfZoom: 1.25,   // <--- add this line
   };
   delete w.explorer;
 
@@ -527,8 +528,8 @@ function render(){
     const content = pane.querySelector(".content");
     if (!content) continue;
 
-    // Fire and forget; renderPdfInto will pull a fresh ArrayBuffer from the Blob
-    renderPdfInto(content, v.pdfBlob);
+    const zoom = v.pdfZoom || 1.25;        // default if missing
+    renderPdfInto(content, v.pdfBlob, zoom);
   }
 }
 
@@ -798,6 +799,7 @@ window.addEventListener("keydown", async (ev) => {
       updateCmdline();
       return;
     }
+
     return;
   }
 
@@ -840,6 +842,40 @@ window.addEventListener("keydown", async (ev) => {
     state.cmdErr = "";
     setMode("command");
     setGlobalHint("COMMAND");
+    return;
+  }
+
+  // Zoom PDF viewer: "+" to zoom in, "-" to zoom out
+  if (!ev.ctrlKey && !ev.metaKey && !ev.altKey &&
+      (ev.key === "+" || ev.key === "-" || ev.key === "=")) {
+    console.log("ehlloe");
+
+    const w = getFocusedWin();
+    if (!w || w.kind !== "viewer") return;
+
+    const ct = (w.viewer?.contentType || "").toLowerCase();
+    if (!ct.includes("application/pdf")) return; // only for PDFs
+
+    ev.preventDefault();
+
+    // Normal keyboards send "=" with Shift for "+"; treat "=" with Shift as "+"
+    const isPlus = (ev.key === "+") || (ev.key === "=" && ev.shiftKey);
+    const isMinus = (ev.key === "-");
+
+    let zoom = w.viewer.pdfZoom || 1.25;
+    const step = 0.25;
+
+    if (isPlus) {
+      zoom = Math.min(zoom + step, 4.0);  // max 4x
+    } else if (isMinus) {
+      zoom = Math.max(zoom - step, 0.5);  // min 0.5x
+    } else {
+      return;
+    }
+
+    w.viewer.pdfZoom = zoom;
+    setGlobalHint(`PDF zoom: ${zoom.toFixed(2)}x`);
+    render(); // re-render layout and PDF at new zoom
     return;
   }
 
@@ -899,13 +935,17 @@ function makePdfContainer() {
   const wrap = document.createElement("div");
   wrap.style.display = "flex";
   wrap.style.flexDirection = "column";
+  wrap.style.alignItems = "center";   // center pages
   wrap.style.gap = "12px";
   wrap.style.padding = "10px";
+  wrap.style.width = "fit-content";
+  wrap.style.maxWidth = "none";
   return wrap;
 }
 
-async function renderPdfInto(viewerEl, pdfBlob) {
+async function renderPdfInto(viewerEl, pdfBlob, zoom) {
   clearViewerNode(viewerEl);
+  viewerEl.style.overflow = "auto";
 
   const pdfWrap = makePdfContainer();
   viewerEl.appendChild(pdfWrap);
@@ -917,16 +957,16 @@ async function renderPdfInto(viewerEl, pdfBlob) {
   loading.style.padding = "6px 2px";
   pdfWrap.appendChild(loading);
 
-  // Fresh ArrayBuffer every time (avoids the "detached ArrayBuffer" issue)
   const arrayBuffer = await pdfBlob.arrayBuffer();
-
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+
   loading.textContent = `PDF loaded (${pdf.numPages} pages). Rendering…`;
+
+  const scale = zoom || 1.25;   // <--- use zoom argument
 
   for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
     const page = await pdf.getPage(pageNum);
-
-    const viewport = page.getViewport({ scale: 1.25 });
+    const viewport = page.getViewport({ scale });
 
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d");
@@ -934,8 +974,9 @@ async function renderPdfInto(viewerEl, pdfBlob) {
     canvas.width = Math.floor(viewport.width);
     canvas.height = Math.floor(viewport.height);
 
-    canvas.style.width = "100%";
-    canvas.style.height = "auto";
+
+    canvas.style.width = `${viewport.width}px`;
+    canvas.style.height = `${viewport.height}px`;
     canvas.style.border = "1px solid rgba(255,255,255,0.12)";
     canvas.style.borderRadius = "10px";
     canvas.style.background = "rgba(0,0,0,0.12)";

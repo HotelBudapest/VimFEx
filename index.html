@@ -112,7 +112,7 @@
       display:flex;
       min-height:0;
       min-width:0;
-      flex: 1 1 auto;
+      flex: 1 1 0;   /* IMPORTANT: was auto */
       gap: 10px;
     }
     .split.v{ flex-direction: row; }
@@ -130,6 +130,11 @@
       display:flex;
       flex-direction:column;
       position:relative;
+    }
+    .pane .content {
+      min-width: 0;
+      min-height: 0;
+      overflow: auto; /* both directions */
     }
     .pane.focused{
       border-color: rgba(139,92,246,0.55);
@@ -196,10 +201,37 @@
     }
 
     .content{
-      flex: 1 1 auto;
-      min-height:0;
-      overflow:auto;
+      flex: 1 1 0;     /* was auto */
+      min-width: 0;    /* ADD THIS */
+      min-height: 0;
+      overflow: auto;
       padding: 10px;
+    }
+
+    /* split containers must be allowed to shrink */
+    .split {
+      min-width: 0;
+      min-height: 0;
+    }
+
+    /* horizontal split must not auto-grow; it should fill available height */
+    .split.h {
+      height: 100%;
+      min-height: 0;
+    }
+
+    /* panes must be shrinkable */
+    .pane {
+      min-width: 0;
+      min-height: 0;
+    }
+
+    /* THIS is the scroll container; it must be shrinkable too */
+    .pane .content {
+      flex: 1 1 0;        /* important: 0 basis */
+      min-width: 0;
+      min-height: 0;
+      overflow: auto;     /* scroll inside pane, not resize pane */
     }
 
     /* Empty pane */
