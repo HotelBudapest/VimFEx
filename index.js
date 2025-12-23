@@ -168,6 +168,20 @@ function scrollFocusedViewer(deltaLines){
   return true;
 }
 
+function scrollFocusedViewerXY(dx, dy){
+  const w = getFocusedWin();
+  if (!w || w.kind !== "viewer") return false;
+
+  const pane = document.querySelector(`[data-win="${w.id}"]`);
+  if (!pane) return false;
+
+  const content = pane.querySelector(".content");
+  if (!content) return false;
+
+  content.scrollBy({ left: dx, top: dy, behavior: "auto" });
+  return true;
+}
+
 function resizeFocused(dir, delta){
   const focusedId = state.focusId;
   if (!focusedId) return;
@@ -952,21 +966,33 @@ window.addEventListener("keydown", async (ev) => {
     return;
   }
 
-  if (!ev.ctrlKey && !ev.metaKey && !ev.altKey && (ev.key === "j" || ev.key === "k")){
+  if (!ev.ctrlKey && !ev.metaKey && !ev.altKey &&
+      (ev.key === "h" || ev.key === "j" || ev.key === "k" || ev.key === "l")) {
+
     const w = getFocusedWin();
     if (!w) return;
 
-    // Explorer: move cursor
+    // Explorer: only j/k move selection
     if (w.kind === "explorer"){
-      ev.preventDefault();
-      await explorerMove(ev.key === "j" ? +1 : -1);
+      if (ev.key === "j" || ev.key === "k") {
+        ev.preventDefault();
+        await explorerMove(ev.key === "j" ? +1 : -1);
+      }
       return;
     }
 
-    // Viewer: scroll
+    // Viewer: h/j/k/l scroll
     if (w.kind === "viewer"){
       ev.preventDefault();
-      scrollFocusedViewer(ev.key === "j" ? +1 : -1);
+
+      const vStep = 48;  // pixels per j/k
+      const hStep = 64;  // pixels per h/l
+
+      if (ev.key === "j") scrollFocusedViewerXY(0, +vStep);
+      if (ev.key === "k") scrollFocusedViewerXY(0, -vStep);
+      if (ev.key === "l") scrollFocusedViewerXY(+hStep, 0);
+      if (ev.key === "h") scrollFocusedViewerXY(-hStep, 0);
+
       return;
     }
 
