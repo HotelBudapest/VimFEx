@@ -1,4 +1,6 @@
+import * as pdfjsLib from "/vendor/pdfjs/pdf.mjs";
 
+pdfjsLib.GlobalWorkerOptions.workerSrc = "/vendor/pdfjs/pdf.worker.mjs";
 // =========================
 // Backend API endpoints
 // =========================
@@ -155,16 +157,7 @@ function scrollFocusedViewer(deltaLines){
   const content = pane.querySelector(".content");
   if (!content) return false;
 
-  const px = deltaLines * 28; // scroll step (px); tweak to taste
-
-  // If there's an iframe (PDF), try to scroll inside it.
-  const frame = content.querySelector("iframe");
-  if (frame && frame.contentWindow){
-    frame.contentWindow.scrollBy(0, px);
-    return true;
-  }
-
-  // Otherwise scroll the content container (text viewer lives here)
+  const px = deltaLines * 48;
   content.scrollBy({ top: px, behavior: "auto" });
   return true;
 }
@@ -289,8 +282,27 @@ function removeFocusedWindow(){
 
 function focusWindow(id){
   if (!state.windows.has(id)) return;
+
+  const prev = state.focusId;
   state.focusId = id;
-  render(); // just to update focus highlight/status
+
+  // update focused CSS class
+  if (prev != null) {
+    const prevPane = document.querySelector(`[data-win="${prev}"]`);
+    if (prevPane) prevPane.classList.remove("focused");
+  }
+  const newPane = document.querySelector(`[data-win="${id}"]`);
+  if (newPane) newPane.classList.add("focused");
+
+  // update "FOCUS" label in statusline
+  document.querySelectorAll(".statusRight span").forEach(span => {
+    span.textContent = "";
+  });
+  if (newPane) {
+    const focusSpan = newPane.querySelector(".statusRight span");
+    if (focusSpan) focusSpan.textContent = "FOCUS";
+  }
+
   setGlobalHint(`Focused window ${id}.`);
 }
 
@@ -430,18 +442,24 @@ async function openFileInWindow(winId, filePath){
   const w = state.windows.get(winId);
   if (!w) return;
 
-  // Convert window to viewer
-  // Cleanup old blob URL if exists
+  // Cleanup old viewer state
   if (w.kind === "viewer" && w.viewer?.objectUrl){
     URL.revokeObjectURL(w.viewer.objectUrl);
   }
 
   w.kind = "viewer";
   w.title = "Viewer";
-  w.viewer = { path: filePath, contentType: "", objectUrl: null, text: "" };
+  w.viewer = {
+    path: filePath,
+    contentType: "",
+    objectUrl: null,
+    text: "",
+    pdfBlob: null
+  };
   delete w.explorer;
 
   render();
+  focusPaneByWinId(winId);
   setGlobalHint(`Opening ${filePath}…`);
 
   try{
@@ -449,22 +467,35 @@ async function openFileInWindow(winId, filePath){
     w.viewer.contentType = contentType;
 
     const ct = (contentType || "").toLowerCase();
-    if (ct.includes("application/pdf")){
-      w.viewer.objectUrl = URL.createObjectURL(blob);
-    } else if (ct.startsWith("text/") || ct.includes("json") || ct.includes("xml")){
-      w.viewer.text = await blob.text();
-    } else {
-      // fallback: still provide blob URL so user can open in a new tab later if you add it
-      w.viewer.objectUrl = URL.createObjectURL(blob);
+
+    if (ct.includes("application/pdf")) {
+      w.viewer.pdfBlob = blob;       // store the Blob, not ArrayBuffer
+
+      render();
+      focusPaneByWinId(winId);
+      setGlobalHint(`Opened ${filePath}`);
+      return;
     }
 
+    // Text
+    if (ct.startsWith("text/") || ct.includes("json") || ct.includes("xml")){
+      w.viewer.text = await blob.text();
+      render();
+      focusPaneByWinId(winId);
+      setGlobalHint(`Opened ${filePath}`);
+      return;
+    }
+
+    // Other binary: provide blob URL (optional)
+    w.viewer.objectUrl = URL.createObjectURL(blob);
     render();
+    focusPaneByWinId(winId);
     setGlobalHint(`Opened ${filePath}`);
   } catch(err){
-    // show error inside viewer
     w.viewer.text = `Failed to open file:\n${err.message || err}`;
     w.viewer.contentType = "text/plain";
     render();
+    focusPaneByWinId(winId);
     setGlobalHint(`Open failed: ${err.message || err}`);
   }
 }
@@ -482,6 +513,23 @@ function render(){
   ws.appendChild(renderNode(state.root));
   updateCmdline();
   updateModePill();
+
+  // After DOM is built, render all PDFs from state
+  for (const w of state.windows.values()) {
+    if (w.kind !== "viewer") continue;
+    const v = w.viewer;
+    const ct = (v.contentType || "").toLowerCase();
+    if (!ct.includes("application/pdf")) continue;
+    if (!v.pdfBlob) continue;
+
+    const pane = document.querySelector(`[data-win="${w.id}"]`);
+    if (!pane) continue;
+    const content = pane.querySelector(".content");
+    if (!content) continue;
+
+    // Fire and forget; renderPdfInto will pull a fresh ArrayBuffer from the Blob
+    renderPdfInto(content, v.pdfBlob);
+  }
 }
 
 function updateModePill(){
@@ -508,8 +556,16 @@ function renderNode(node){
   return el;
 }
 
+function focusPaneByWinId(winId) {
+  requestAnimationFrame(() => {
+    const pane = document.querySelector(`[data-win="${winId}"]`);
+    if (pane) pane.focus();
+  });
+}
+
 function renderPane(w){
   const pane = document.createElement("div");
+  pane.tabIndex = 0;
   pane.className = "pane" + (w.id === state.focusId ? " focused" : "");
   pane.dataset.win = String(w.id);
 
@@ -638,24 +694,22 @@ function renderPane(w){
     }
   }
 
-  if (w.kind === "viewer"){
+  if (w.kind === "viewer") {
     const v = w.viewer;
     const ct = (v.contentType || "").toLowerCase();
 
-    if (ct.includes("application/pdf") && v.objectUrl){
-      const frame = document.createElement("iframe");
-      frame.title = "PDF preview";
-      frame.src = v.objectUrl;
-      content.appendChild(frame);
-    } else if (ct.startsWith("text/") || ct.includes("json") || ct.includes("xml") || v.text){
+    if (ct.includes("application/pdf")) {
+      // Leave content empty here; render() will call renderPdfInto()
+      // once the whole layout is built.
+    } else if (ct.startsWith("text/") || ct.includes("json") || ct.includes("xml") || v.text) {
       const pre = document.createElement("pre");
       pre.textContent = v.text || "";
       content.appendChild(pre);
-    } else if (v.objectUrl){
-      // Fallback: show in iframe anyway
+    } else if (v.objectUrl) {
       const frame = document.createElement("iframe");
       frame.title = "File preview";
       frame.src = v.objectUrl;
+      frame.tabIndex = -1;
       content.appendChild(frame);
     } else {
       const msg = document.createElement("div");
@@ -768,7 +822,14 @@ window.addEventListener("keydown", async (ev) => {
   // Ctrl+B: go up (explorer only)
   if (ev.ctrlKey && !ev.shiftKey && !ev.altKey && !ev.metaKey && (ev.key === "b" || ev.key === "B")){
     ev.preventDefault();
-    await explorerUp();
+    const w = getFocusedWin();
+    if (!w) return;
+
+    if (w.kind === "explorer") {
+      await explorerUp();
+    } else if (w.kind === "viewer") {
+      await viewerBackToExplorer();
+    }
     return;
   }
 
@@ -803,16 +864,17 @@ window.addEventListener("keydown", async (ev) => {
     return;
   }
 
-  if (!ev.ctrlKey && !ev.metaKey && !ev.altKey && !ev.shiftKey &&
+  // Resize keymaps: require Shift (so Shift+j => "J"), not Caps Lock.
+  if (!ev.ctrlKey && !ev.metaKey && !ev.altKey && ev.shiftKey &&
       (ev.key === "H" || ev.key === "L" || ev.key === "J" || ev.key === "K")) {
 
     ev.preventDefault();
-    const step = 0.15; // tweak to taste
+    const step = 0.15;
 
-    if (ev.key === "H") resizeFocused("v", -step); // shrink width
-    if (ev.key === "L") resizeFocused("v", +step); // grow width
-    if (ev.key === "J") resizeFocused("h", -step); // shrink height
-    if (ev.key === "K") resizeFocused("h", +step); // grow height
+    if (ev.key === "H") resizeFocused("v", -step);
+    if (ev.key === "L") resizeFocused("v", +step);
+    if (ev.key === "J") resizeFocused("h", -step);
+    if (ev.key === "K") resizeFocused("h", +step);
 
     return;
   }
@@ -827,6 +889,96 @@ window.addEventListener("keydown", async (ev) => {
     return;
   }
 });
+
+function clearViewerNode(viewerEl) {
+  // remove old canvases / content
+  viewerEl.innerHTML = "";
+}
+
+function makePdfContainer() {
+  const wrap = document.createElement("div");
+  wrap.style.display = "flex";
+  wrap.style.flexDirection = "column";
+  wrap.style.gap = "12px";
+  wrap.style.padding = "10px";
+  return wrap;
+}
+
+async function renderPdfInto(viewerEl, pdfBlob) {
+  clearViewerNode(viewerEl);
+
+  const pdfWrap = makePdfContainer();
+  viewerEl.appendChild(pdfWrap);
+
+  const loading = document.createElement("div");
+  loading.textContent = "Rendering PDF…";
+  loading.style.fontFamily = "var(--mono)";
+  loading.style.color = "rgba(255,255,255,0.65)";
+  loading.style.padding = "6px 2px";
+  pdfWrap.appendChild(loading);
+
+  // Fresh ArrayBuffer every time (avoids the "detached ArrayBuffer" issue)
+  const arrayBuffer = await pdfBlob.arrayBuffer();
+
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  loading.textContent = `PDF loaded (${pdf.numPages} pages). Rendering…`;
+
+  for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+    const page = await pdf.getPage(pageNum);
+
+    const viewport = page.getViewport({ scale: 1.25 });
+
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+
+    canvas.width = Math.floor(viewport.width);
+    canvas.height = Math.floor(viewport.height);
+
+    canvas.style.width = "100%";
+    canvas.style.height = "auto";
+    canvas.style.border = "1px solid rgba(255,255,255,0.12)";
+    canvas.style.borderRadius = "10px";
+    canvas.style.background = "rgba(0,0,0,0.12)";
+
+    const label = document.createElement("div");
+    label.textContent = `Page ${pageNum}/${pdf.numPages}`;
+    label.style.fontFamily = "var(--mono)";
+    label.style.fontSize = "12px";
+    label.style.color = "rgba(255,255,255,0.55)";
+    label.style.margin = "2px 2px -2px";
+
+    pdfWrap.appendChild(label);
+    pdfWrap.appendChild(canvas);
+
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    await new Promise(requestAnimationFrame);
+  }
+
+  loading.remove();
+}
+
+async function viewerBackToExplorer() {
+  const w = getFocusedWin();
+  if (!w || w.kind !== "viewer") return;
+
+  const filePath = w.viewer?.path || "/";
+  const dir = parentPath(filePath); // uses your existing parentPath()
+
+  // Cleanup any blob url
+  if (w.viewer?.pdfBlob) {
+    w.viewer.pdfBlob = null;
+  }
+
+  // Convert to explorer at the file's directory
+  w.kind = "explorer";
+  w.title = "Explorer";
+  w.explorer = { cwd: dir, items: [], cursor: 0, loading: false, err: "" };
+  delete w.viewer;
+
+  render();
+  focusPaneByWinId(w.id);
+  await loadExplorerListing(w, dir);
+}
 
 // =========================
 // Init

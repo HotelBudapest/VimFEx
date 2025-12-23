@@ -24,8 +24,25 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === "GET" && req.url === "/index.js") {
-        const jsPath = path.join(process.cwd(), "index.js");
-        const js = await fs.readFile(jsPath, "utf-8");
+        const p = path.join(process.cwd(), "index.js");
+        const js = await fs.readFile(p, "utf-8");
+        res.writeHead(200, { "Content-Type": "text/javascript; charset=utf-8" });
+        res.end(js);
+        return;
+    }
+
+    // Serve PDF.js (ESM build) from node_modules
+    if (req.method === "GET" && req.url === "/vendor/pdfjs/pdf.mjs") {
+        const p = path.join(process.cwd(), "node_modules", "pdfjs-dist", "build", "pdf.mjs");
+        const js = await fs.readFile(p, "utf-8");
+        res.writeHead(200, { "Content-Type": "text/javascript; charset=utf-8" });
+        res.end(js);
+        return;
+    }
+
+    if (req.method === "GET" && req.url === "/vendor/pdfjs/pdf.worker.mjs") {
+        const p = path.join(process.cwd(), "node_modules", "pdfjs-dist", "build", "pdf.worker.mjs");
+        const js = await fs.readFile(p, "utf-8");
         res.writeHead(200, { "Content-Type": "text/javascript; charset=utf-8" });
         res.end(js);
         return;
