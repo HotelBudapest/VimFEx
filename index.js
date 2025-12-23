@@ -6,7 +6,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = "/vendor/pdfjs/pdf.worker.mjs";
 // =========================
 const API_LIST = "/api/list";
 const API_FILE = "/api/file";
-
+const API_SEARCH = "/api/search";
 // Client "root" path - your backend can interpret "/" however you want
 const DEFAULT_PATH = "/";
 
@@ -14,17 +14,16 @@ const DEFAULT_PATH = "/";
 // State (editor-like)
 // =========================
 const state = {
-  mode: "normal",         // "normal" | "command"
+  mode: "normal",   // "normal" | "command" | "search"
   cmd: "",
   cmdErr: "",
+  search: "",
+  searchErr: "",
+
   nextId: 1,
   focusId: null,
-
-  // Split tree root
   root: null,
-
-  // Windows dictionary
-  windows: new Map(), // id -> window object
+  windows: new Map(),
 };
 
 // Window object shape:
@@ -72,7 +71,12 @@ function getFocusedWin(){
 function setMode(mode){
   state.mode = mode;
   document.getElementById("modePill").textContent = mode.toUpperCase();
+
   if (mode === "command"){
+    setPrompt(":");
+    showCmdline();
+  } else if (mode === "search"){
+    setPrompt("/");
     showCmdline();
   } else {
     hideCmdline();
@@ -93,8 +97,10 @@ function hideCmdline(){
 }
 
 function updateCmdline(){
-  document.getElementById("cmdtext").textContent = state.cmd;
-  document.getElementById("cmderr").textContent = state.cmdErr || "";
+  document.getElementById("cmdtext").textContent =
+    state.mode === "search" ? state.search : state.cmd;
+  document.getElementById("cmderr").textContent =
+    state.mode === "search" ? state.searchErr : (state.cmdErr || "");
 }
 
 function setGlobalHint(text){
@@ -415,19 +421,30 @@ function scrollCursorIntoView(winId){
 async function explorerEnter(){
   const w = getFocusedWin();
   if (!w || w.kind !== "explorer") return;
+
   const items = w.explorer.items;
   if (!items.length) return;
 
   const cur = items[w.explorer.cursor];
   if (!cur) return;
 
+  // If this item came from search results, it has an absolute path
+  if (cur.fullPath){
+    if (cur.type === "dir"){
+      await loadExplorerListing(w, cur.fullPath);
+      return;
+    }
+    await openFileInWindow(w.id, cur.fullPath);
+    return;
+  }
+
+  // Normal explorer listing path logic
   if (cur.type === "dir"){
     const next = joinPath(w.explorer.cwd, cur.name);
     await loadExplorerListing(w, next);
     return;
   }
 
-  // open file in the same window (convert to viewer)
   await openFileInWindow(w.id, joinPath(w.explorer.cwd, cur.name));
 }
 
@@ -771,6 +788,49 @@ window.addEventListener("keydown", async (ev) => {
   // Don't hijack keys while user is in a text input (future-proof)
   if (isTypingTarget(ev)) return;
 
+  if (state.mode === "search"){
+    ev.preventDefault();
+
+    if (ev.key === "Escape"){
+      state.search = "";
+      state.searchErr = "";
+      setMode("normal");
+      setGlobalHint("");
+      return;
+    }
+
+    if (ev.key === "Enter"){
+      const w = getFocusedWin();
+      if (!w || w.kind !== "explorer") return;
+
+      const query = state.search.trim();
+      state.search = "";
+      setMode("normal");
+
+      if (!query){
+        setGlobalHint("Empty search");
+        return;
+      }
+
+      await runExplorerSearch(w, query);
+      return;
+    }
+
+    if (ev.key === "Backspace"){
+      state.search = state.search.slice(0, -1);
+      updateCmdline();
+      return;
+    }
+
+    if (ev.key.length === 1){
+      state.search += ev.key;
+      updateCmdline();
+      return;
+    }
+
+    return;
+  }
+
   // Command mode behavior
   if (state.mode === "command"){
     ev.preventDefault();
@@ -812,6 +872,19 @@ window.addEventListener("keydown", async (ev) => {
       focusWindow(Number(digit));
       return;
     }
+  }
+
+  // "/" → enter recursive search (explorer only)
+  if (!ev.ctrlKey && !ev.metaKey && !ev.altKey && ev.key === "/"){
+    const w = getFocusedWin();
+    if (!w || w.kind !== "explorer") return;
+
+    ev.preventDefault();
+    state.search = "";
+    state.searchErr = "";
+    setMode("search");
+    setGlobalHint("Search (recursive)");
+    return;
   }
 
   // Ctrl+N: open explorer in focused window
@@ -1019,6 +1092,55 @@ async function viewerBackToExplorer() {
   render();
   focusPaneByWinId(w.id);
   await loadExplorerListing(w, dir);
+}
+
+async function fetchSearch(basePath, q){
+  const url = new URL(API_SEARCH, window.location.origin);
+  url.searchParams.set("path", basePath);
+  url.searchParams.set("q", q);
+  const res = await fetch(url.toString(), { method: "GET" });
+  if (!res.ok){
+    const txt = await res.text().catch(()=> "");
+    throw new Error(txt || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+async function runExplorerSearch(win, query){
+  win.explorer.loading = true;
+  render();
+
+  try{
+    const url = new URL("/api/search", window.location.origin);
+    url.searchParams.set("path", win.explorer.cwd);
+    url.searchParams.set("q", query);
+
+    const res = await fetch(url.toString());
+    if (!res.ok) throw new Error(await res.text());
+
+    const data = await res.json();
+
+    win.explorer.items = data.matches.map(m => ({
+      name: m.path.split("/").pop(),
+      type: m.type,
+      fullPath: m.path,
+    }));
+
+    win.explorer.cursor = 0;
+    win.explorer.loading = false;
+
+    setGlobalHint(`${win.explorer.items.length} match(es)`);
+    render();
+  } catch (err){
+    win.explorer.loading = false;
+    win.explorer.err = err.message || "Search failed";
+    render();
+  }
+}
+
+function setPrompt(ch){
+  const p = document.getElementById("cmdprompt");
+  if (p) p.textContent = ch;
 }
 
 // =========================
