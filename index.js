@@ -24,6 +24,9 @@ const state = {
   focusId: null,
   root: null,
   windows: new Map(),
+  pdfCache: new Map(),
+  nextPdfToken: 1,
+  awaitingSecondG: false,
 };
 
 // Window object shape:
@@ -66,6 +69,23 @@ function parentPath(p){
 
 function getFocusedWin(){
   return state.windows.get(state.focusId) || null;
+}
+
+function dropPdfCache(winId){
+  if (winId == null) return;
+  const entry = state.pdfCache.get(winId);
+  if (entry?.el){
+    entry.el.remove();
+  }
+  state.pdfCache.delete(winId);
+}
+
+function makePdfCacheKey(viewer){
+  if (!viewer) return "";
+  const zoom = viewer.pdfZoom || 1.25;
+  const token = viewer.pdfToken || 0;
+  const path = viewer.path || "";
+  return `${path}::${token}::${zoom.toFixed(2)}`;
 }
 
 function setMode(mode){
@@ -112,7 +132,7 @@ function setGlobalHint(text){
 // =========================
 function makeWindow(kind){
   const id = state.nextId++;
-  const w = { id, kind, title: "" };
+  const w = { id, kind, title: "", lastViewerPath: null };
 
   if (kind === "empty"){
     w.title = "No buffer";
@@ -122,6 +142,7 @@ function makeWindow(kind){
   } else if (kind === "viewer"){
     w.title = "Viewer";
     w.viewer = { path: "", contentType: "", objectUrl: null, text: "" };
+    w.lastViewerPath = w.viewer.path || null;
   }
 
   state.windows.set(id, w);
@@ -289,6 +310,7 @@ function removeFocusedWindow(){
   if (w?.kind === "viewer" && w.viewer?.objectUrl){
     URL.revokeObjectURL(w.viewer.objectUrl);
   }
+  dropPdfCache(focusedId);
 
   state.windows.delete(focusedId);
 
@@ -365,6 +387,12 @@ async function ensureExplorerInFocused(){
     if (w.kind === "viewer" && w.viewer?.objectUrl){
       URL.revokeObjectURL(w.viewer.objectUrl);
     }
+    if (w.kind === "viewer"){
+      if (w.viewer?.path){
+        w.lastViewerPath = w.viewer.path;
+      }
+      dropPdfCache(w.id);
+    }
     // Convert window to explorer
     w.kind = "explorer";
     w.title = "Explorer";
@@ -416,6 +444,19 @@ async function explorerMove(delta){
   w.explorer.cursor = clamp(w.explorer.cursor + delta, 0, n - 1);
   render();
   scrollCursorIntoView(w.id);
+}
+
+function explorerJumpToEdge(edge){
+  const w = getFocusedWin();
+  if (!w || w.kind !== "explorer") return;
+  const n = w.explorer.items.length;
+  if (n === 0) return;
+
+  const idx = edge === "end" ? n - 1 : 0;
+  w.explorer.cursor = idx;
+  render();
+  scrollCursorIntoView(w.id);
+  setGlobalHint(edge === "end" ? "Bottom of list" : "Top of list");
 }
 
 function scrollCursorIntoView(winId){
@@ -473,6 +514,8 @@ async function openFileInWindow(winId, filePath){
   const w = state.windows.get(winId);
   if (!w) return;
 
+  dropPdfCache(winId);
+
   // Cleanup old viewer state
   if (w.kind === "viewer" && w.viewer?.objectUrl){
     URL.revokeObjectURL(w.viewer.objectUrl);
@@ -486,8 +529,10 @@ async function openFileInWindow(winId, filePath){
     objectUrl: null,
     text: "",
     pdfBlob: null,
-    pdfZoom: 1.25,   // <--- add this line
+    pdfZoom: 1.25,
+    pdfToken: 0,
   };
+  w.lastViewerPath = filePath;
   delete w.explorer;
 
   render();
@@ -502,6 +547,7 @@ async function openFileInWindow(winId, filePath){
 
     if (ct.includes("application/pdf")) {
       w.viewer.pdfBlob = blob;       // store the Blob, not ArrayBuffer
+      w.viewer.pdfToken = state.nextPdfToken++;
 
       render();
       focusPaneByWinId(winId);
@@ -551,16 +597,27 @@ function render(){
     if (w.kind !== "viewer") continue;
     const v = w.viewer;
     const ct = (v.contentType || "").toLowerCase();
-    if (!ct.includes("application/pdf")) continue;
-    if (!v.pdfBlob) continue;
+    if (!ct.includes("application/pdf") || !v.pdfBlob) {
+      dropPdfCache(w.id);
+      continue;
+    }
 
     const pane = document.querySelector(`[data-win="${w.id}"]`);
     if (!pane) continue;
     const content = pane.querySelector(".content");
     if (!content) continue;
 
-    const zoom = v.pdfZoom || 1.25;        // default if missing
-    renderPdfInto(content, v.pdfBlob, zoom);
+    const zoom = v.pdfZoom || 1.25;
+    const cacheKey = makePdfCacheKey(v);
+    const cached = state.pdfCache.get(w.id);
+
+    if (cached && cached.key === cacheKey && cached.el){
+      content.appendChild(cached.el);
+      continue;
+    }
+
+    dropPdfCache(w.id);
+    renderPdfInto(w.id, content, v.pdfBlob, zoom, cacheKey);
   }
 }
 
@@ -888,8 +945,13 @@ window.addEventListener("keydown", async (ev) => {
     }
   }
 
+  const isPlainKey = !ev.ctrlKey && !ev.metaKey && !ev.altKey;
+  if (state.awaitingSecondG && (!isPlainKey || ev.key !== "g")){
+    state.awaitingSecondG = false;
+  }
+
   // "/" → enter recursive search (explorer only)
-  if (!ev.ctrlKey && !ev.metaKey && !ev.altKey && ev.key === "/"){
+  if (isPlainKey && ev.key === "/"){
     const w = getFocusedWin();
     if (!w || w.kind !== "explorer") return;
 
@@ -899,6 +961,43 @@ window.addEventListener("keydown", async (ev) => {
     setMode("search");
     setGlobalHint("Search (recursive)");
     return;
+  }
+
+  // gg / G explorer jumps
+  if (isPlainKey && ev.key === "g"){
+    const w = getFocusedWin();
+    if (!w || w.kind !== "explorer"){
+      state.awaitingSecondG = false;
+      return;
+    }
+
+    ev.preventDefault();
+    if (state.awaitingSecondG){
+      state.awaitingSecondG = false;
+      explorerJumpToEdge("start");
+    } else {
+      state.awaitingSecondG = true;
+    }
+    return;
+  }
+  if (isPlainKey && ev.key === "G"){
+    const w = getFocusedWin();
+    if (!w || w.kind !== "explorer") return;
+
+    ev.preventDefault();
+    state.awaitingSecondG = false;
+    explorerJumpToEdge("end");
+    return;
+  }
+
+  if (isPlainKey && ev.key === "Escape"){
+    const w = getFocusedWin();
+    if (w && w.kind === "explorer" && w.lastViewerPath){
+      ev.preventDefault();
+      state.awaitingSecondG = false;
+      await openFileInWindow(w.id, w.lastViewerPath);
+      return;
+    }
   }
 
   // Ctrl+N: open explorer in focused window
@@ -1042,12 +1141,13 @@ function makePdfContainer() {
   return wrap;
 }
 
-async function renderPdfInto(viewerEl, pdfBlob, zoom) {
+async function renderPdfInto(winId, viewerEl, pdfBlob, zoom, cacheKey) {
   clearViewerNode(viewerEl);
   viewerEl.style.overflow = "auto";
 
   const pdfWrap = makePdfContainer();
   viewerEl.appendChild(pdfWrap);
+  state.pdfCache.set(winId, { key: cacheKey, el: pdfWrap });
 
   const loading = document.createElement("div");
   loading.textContent = "Rendering PDF…";
@@ -1103,11 +1203,15 @@ async function viewerBackToExplorer() {
 
   const filePath = w.viewer?.path || "/";
   const dir = parentPath(filePath); // uses your existing parentPath()
+  if (w.viewer?.path){
+    w.lastViewerPath = w.viewer.path;
+  }
 
   // Cleanup any blob url
   if (w.viewer?.pdfBlob) {
     w.viewer.pdfBlob = null;
   }
+  dropPdfCache(w.id);
 
   // Convert to explorer at the file's directory
   w.kind = "explorer";
@@ -1120,47 +1224,43 @@ async function viewerBackToExplorer() {
   await loadExplorerListing(w, dir);
 }
 
-async function fetchSearch(basePath, q){
-  const url = new URL(API_SEARCH, window.location.origin);
-  url.searchParams.set("path", basePath);
-  url.searchParams.set("q", q);
-  const res = await fetch(url.toString(), { method: "GET" });
-  if (!res.ok){
-    const txt = await res.text().catch(()=> "");
-    throw new Error(txt || `HTTP ${res.status}`);
-  }
-  return res.json();
-}
-
 async function runExplorerSearch(win, query){
   win.explorer.loading = true;
+  win.explorer.err = "";
   render();
 
   try{
-    const url = new URL("/api/search", window.location.origin);
-    url.searchParams.set("path", win.explorer.cwd);
-    url.searchParams.set("q", query);
+    const { path: listedPath, items } = await fetchListing(win.explorer.cwd);
+    const normalized = (query || "").toLowerCase();
+    const basePath = listedPath ?? win.explorer.cwd;
 
-    const res = await fetch(url.toString());
-    if (!res.ok) throw new Error(await res.text());
+    const sorted = Array.isArray(items) ? [...items] : [];
+    sorted.sort((a, b) => {
+      if (a.type !== b.type) return a.type === "dir" ? -1 : 1;
+      return String(a.name).localeCompare(String(b.name));
+    });
 
-    const data = await res.json();
+    const matches = sorted
+      .filter(it => String(it.name).toLowerCase().includes(normalized))
+      .map(it => ({
+        ...it,
+        fullPath: joinPath(basePath, it.name),
+      }));
 
-    win.explorer.items = data.matches.map(m => ({
-      name: m.path.split("/").pop(),
-      type: m.type,
-      fullPath: m.path,
-    }));
-
-    win.explorer.cursor = 0;
+    win.explorer.items = matches;
+    win.explorer.cursor = matches.length ? 0 : 0;
     win.explorer.loading = false;
 
-    setGlobalHint(`${win.explorer.items.length} match(es)`);
+    const hint = matches.length
+      ? `${matches.length} match(es) in ${basePath}`
+      : `No matches in ${basePath}`;
+    setGlobalHint(hint);
     render();
   } catch (err){
     win.explorer.loading = false;
     win.explorer.err = err.message || "Search failed";
     render();
+    setGlobalHint(`Search error: ${win.explorer.err}`);
   }
 }
 
