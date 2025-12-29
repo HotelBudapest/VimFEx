@@ -51,6 +51,14 @@ const server = http.createServer(async (req, res) => {
         return;
     }
 
+    if (req.method === "GET" && req.url === "/vendor/pdfjs/pdf_viewer.mjs") {
+        const p = path.join(process.cwd(), "node_modules", "pdfjs-dist", "web", "pdf_viewer.mjs");
+        const js = await fs.readFile(p, "utf-8");
+        res.writeHead(200, { "Content-Type": "text/javascript; charset=utf-8" });
+        res.end(js);
+        return;
+    }
+
     async function searchRecursive(baseDir, q, out, limit=200){
       const qlc = q.toLowerCase();
       let entries;
