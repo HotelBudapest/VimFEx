@@ -22,6 +22,7 @@ const state = {
   searchErr: "",
 
   nextId: 1,
+  freeIds: [],
   focusId: null,
   root: null,
   windows: new Map(),
@@ -132,7 +133,7 @@ function setGlobalHint(text){
 // Tree operations
 // =========================
 function makeWindow(kind){
-  const id = state.nextId++;
+  const id = state.freeIds.length ? state.freeIds.shift() : state.nextId++;
   const w = { id, kind, title: "", lastViewerPath: null };
 
   if (kind === "empty"){
@@ -412,6 +413,8 @@ function removeFocusedWindow(){
   dropPdfCache(focusedId);
 
   state.windows.delete(focusedId);
+  state.freeIds.push(focusedId);
+  state.freeIds.sort((a, b) => a - b);
 
   // Choose a new focus: first leaf id
   const newLeafIds = collectLeafIds(state.root);
@@ -936,6 +939,21 @@ function execCommand(raw){
   }
   if (cmd === "vspl"){
     splitFocused("v");
+    return;
+  }
+
+  // Numeric command: focus window by ID
+  if (/^\d+$/.test(cmd)){
+    const id = Number(cmd);
+    if (state.windows.has(id)){
+      focusWindow(id);
+      setMode("normal");
+      setGlobalHint(`Jumped to window ${id}`);
+      return;
+    }
+    state.cmdErr = `E94: No window ${id}`;
+    updateCmdline();
+    setGlobalHint(state.cmdErr);
     return;
   }
 
