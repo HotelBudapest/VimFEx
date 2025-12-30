@@ -1,5 +1,4 @@
 import * as pdfjsLib from "/vendor/pdfjs/pdf.mjs";
-import { TextLayerBuilder } from "/vendor/pdfjs/pdf_viewer.mjs";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = "/vendor/pdfjs/pdf.worker.mjs";
 // =========================
@@ -203,104 +202,6 @@ function scrollFocusedViewerXY(dx, dy){
 
   content.scrollBy({ left: dx, top: dy, behavior: "auto" });
   return true;
-}
-
-function viewerSupportsPdf(w){
-  if (!w || w.kind !== "viewer") return false;
-  const ct = (w.viewer?.contentType || "").toLowerCase();
-  return ct.includes("application/pdf");
-}
-
-function ensureViewerVisualState(viewer){
-  if (!viewer.visualMode){
-    viewer.visualMode = { active: false, cursor: 0, spans: [] };
-  }
-  if (!Array.isArray(viewer.visualMode.spans)){
-    viewer.visualMode.spans = [];
-  }
-  viewer.visualMode.spans = viewer.visualMode.spans.filter(
-    (el) => el && el.isConnected
-  );
-  return viewer.visualMode;
-}
-
-function updateViewerVisualHighlight(viewer){
-  const vm = ensureViewerVisualState(viewer);
-  vm.spans.forEach((span, idx) => {
-    if (!span) return;
-    if (vm.active && idx === vm.cursor){
-      span.classList.add("visualCursor");
-    } else {
-      span.classList.remove("visualCursor");
-    }
-  });
-}
-
-function setViewerVisualModeActive(w, active){
-  if (!w?.viewer) return;
-  const vm = ensureViewerVisualState(w.viewer);
-  if (active && vm.spans.length === 0){
-    vm.active = false;
-    updateViewerVisualHighlight(w.viewer);
-    setGlobalHint("No selectable text on this page yet");
-    return;
-  }
-  vm.active = active;
-  updateViewerVisualHighlight(w.viewer);
-  setGlobalHint(active ? "PDF visual mode" : "Exited visual mode");
-}
-
-function moveViewerVisualCursor(w, delta){
-  if (!w?.viewer) return;
-  const vm = ensureViewerVisualState(w.viewer);
-  if (vm.spans.length === 0){
-    setGlobalHint("No selectable text");
-    return;
-  }
-  const next = clamp(vm.cursor + delta, 0, vm.spans.length - 1);
-  vm.cursor = next;
-  updateViewerVisualHighlight(w.viewer);
-  const span = vm.spans[next];
-  if (span){
-    span.scrollIntoView({ block: "center", inline: "center", behavior: "smooth" });
-  }
-  setGlobalHint(`Visual cursor ${next + 1}/${vm.spans.length}`);
-}
-
-async function copyViewerVisualSelection(w){
-  if (!w?.viewer) return;
-  const vm = ensureViewerVisualState(w.viewer);
-  if (!vm.active){
-    setGlobalHint("Visual mode is not active");
-    return;
-  }
-  const span = vm.spans[vm.cursor];
-  if (!span){
-    setGlobalHint("Nothing selected");
-    return;
-  }
-  const text = span.textContent || "";
-  if (!text.trim()){
-    setGlobalHint("Selection is empty");
-    return;
-  }
-  try{
-    await navigator.clipboard.writeText(text);
-    setGlobalHint(`Copied: ${text.trim().slice(0, 40)}${text.length > 40 ? "…" : ""}`);
-  } catch (err){
-    console.error("Clipboard write failed", err);
-    setGlobalHint("Failed to copy (clipboard denied)");
-  }
-}
-
-function syncViewerVisualSpans(winId, spans){
-  const w = state.windows.get(winId);
-  if (!viewerSupportsPdf(w)) return;
-  const vm = ensureViewerVisualState(w.viewer);
-  vm.spans.forEach(span => span?.classList.remove("visualCursor"));
-  vm.spans = spans.filter(Boolean);
-  vm.cursor = clamp(vm.cursor, 0, Math.max(0, vm.spans.length - 1));
-  updateViewerVisualHighlight(w.viewer);
 }
 
 function resizeFocused(dir, delta){
@@ -633,7 +534,6 @@ async function openFileInWindow(winId, filePath){
     pdfBlob: null,
     pdfZoom: 1.25,
     pdfToken: 0,
-    visualMode: { active: false, cursor: 0, spans: [] },
   };
   w.lastViewerPath = filePath;
   delete w.explorer;
@@ -1108,32 +1008,8 @@ window.addEventListener("keydown", async (ev) => {
     return;
   }
 
-  if (isPlainKey && ev.key === "v"){
-    const w = getFocusedWin();
-    if (viewerSupportsPdf(w)){
-      ev.preventDefault();
-      const active = Boolean(w.viewer.visualMode?.active);
-      setViewerVisualModeActive(w, !active);
-      return;
-    }
-  }
-
-  if (isPlainKey && ev.key === "y"){
-    const w = getFocusedWin();
-    if (viewerSupportsPdf(w) && w.viewer.visualMode?.active){
-      ev.preventDefault();
-      await copyViewerVisualSelection(w);
-      return;
-    }
-  }
-
   if (isPlainKey && ev.key === "Escape"){
     const w = getFocusedWin();
-    if (viewerSupportsPdf(w) && w.viewer.visualMode?.active){
-      ev.preventDefault();
-      setViewerVisualModeActive(w, false);
-      return;
-    }
     if (w && w.kind === "explorer" && w.lastViewerPath){
       ev.preventDefault();
       state.awaitingSecondG = false;
@@ -1224,13 +1100,6 @@ window.addEventListener("keydown", async (ev) => {
 
     // Viewer: h/j/k/l scroll
     if (w.kind === "viewer"){
-      if (viewerSupportsPdf(w) && w.viewer.visualMode?.active){
-        ev.preventDefault();
-        const dir = (ev.key === "j" || ev.key === "l") ? +1 : -1;
-        moveViewerVisualCursor(w, dir);
-        return;
-      }
-
       ev.preventDefault();
 
       const vStep = 48;  // pixels per j/k
@@ -1311,7 +1180,6 @@ async function renderPdfInto(winId, viewerEl, pdfBlob, zoom, cacheKey) {
   loading.textContent = `PDF loaded (${pdf.numPages} pages). Rendering…`;
 
   const scale = zoom || 1.25;   // <--- use zoom argument
-  const textSpans = [];
 
   for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
     const page = await pdf.getPage(pageNum);
@@ -1343,29 +1211,15 @@ async function renderPdfInto(winId, viewerEl, pdfBlob, zoom, cacheKey) {
     pageWrap.style.height = `${viewport.height}px`;
 
     pageWrap.appendChild(canvas);
-    const textLayerBuilder = new TextLayerBuilder({
-      pdfPage: page,
-    });
-    const textLayerDiv = textLayerBuilder.div;
-    textLayerDiv.style.width = `${viewport.width}px`;
-    textLayerDiv.style.height = `${viewport.height}px`;
-    textLayerDiv.style.position = "absolute";
-    textLayerDiv.style.left = "0";
-    textLayerDiv.style.top = "0";
-    textLayerDiv.style.pointerEvents = "none";
-    pageWrap.appendChild(textLayerDiv);
 
     pdfWrap.appendChild(label);
     pdfWrap.appendChild(pageWrap);
 
     await page.render({ canvasContext: ctx, viewport }).promise;
-    await textLayerBuilder.render({ viewport });
-    textSpans.push(...textLayerDiv.querySelectorAll("span"));
     await new Promise(requestAnimationFrame);
   }
 
   loading.remove();
-  syncViewerVisualSpans(winId, textSpans);
 }
 
 async function viewerBackToExplorer() {
