@@ -7,6 +7,29 @@ import path from "node:path";
 import { promises as fs } from "node:fs";
 import util from "util";
 
+async function readJsonBody(req) {
+    const chunks = [];
+    for await (const chunk of req) {
+        chunks.push(chunk);
+    }
+    const raw = Buffer.concat(chunks).toString("utf-8").trim();
+    if (!raw) return {};
+    try {
+        return JSON.parse(raw);
+    } catch (err) {
+        throw new Error("Invalid JSON body");
+    }
+}
+
+function sanitizeNoteName(name) {
+    const clean = (name || "").replace(/[\r\n]/g, "").trim();
+    const base = path.basename(clean);
+    if (!base || base === "." || base === "..") return "";
+    if (base.includes("/") || base.includes("\\"))
+        return "";
+    return base;
+}
+
 const server = http.createServer(async (req, res) => {
     const ROOT = process.cwd();
     console.log(req.url);
@@ -105,6 +128,120 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(200, {"Content-Type":"application/json"});
       res.end(JSON.stringify({ base, q, matches }));
       return;
+    }
+
+    if (req.method === "POST" && req.url === "/api/note") {
+        try {
+            const body = await readJsonBody(req);
+            const dir = (body.dir || "").trim();
+            let requestedName = sanitizeNoteName(body.name || "");
+
+            if (!dir) {
+                res.writeHead(400, {"Content-Type":"application/json"});
+                res.end(JSON.stringify({ error: "Missing dir" }));
+                return;
+            }
+
+            if (body.name && !requestedName) {
+                res.writeHead(400, {"Content-Type":"application/json"});
+                res.end(JSON.stringify({ error: "Invalid filename" }));
+                return;
+            }
+
+            const resolvedDir = path.resolve(dir);
+            let stat;
+            try {
+                stat = await fs.stat(resolvedDir);
+            } catch {
+                stat = null;
+            }
+            if (!stat || !stat.isDirectory()) {
+                res.writeHead(400, {"Content-Type":"application/json"});
+                res.end(JSON.stringify({ error: "Invalid dir" }));
+                return;
+            }
+
+            if (!requestedName) {
+                const now = new Date();
+                const parts = [
+                    now.getFullYear(),
+                    String(now.getMonth() + 1).padStart(2, "0"),
+                    String(now.getDate()).padStart(2, "0"),
+                    String(now.getHours()).padStart(2, "0"),
+                    String(now.getMinutes()).padStart(2, "0"),
+                    String(now.getSeconds()).padStart(2, "0"),
+                ];
+                requestedName = `note-${parts.join("")}.txt`;
+            }
+
+            if (!requestedName.toLowerCase().endsWith(".txt")) {
+                requestedName = `${requestedName}.txt`;
+            }
+
+            const baseName = requestedName;
+            let finalName = baseName;
+            let candidatePath = path.join(resolvedDir, finalName);
+
+            if (body.name) {
+                try {
+                    await fs.access(candidatePath);
+                    res.writeHead(409, {"Content-Type":"application/json"});
+                    res.end(JSON.stringify({ error: "File already exists" }));
+                    return;
+                } catch {
+                    // ok to create
+                }
+            } else {
+                let counter = 1;
+                while (true) {
+                    try {
+                        await fs.access(candidatePath);
+                        const suffix = `-${counter++}`;
+                        finalName = baseName.replace(/\.txt$/i, `${suffix}.txt`);
+                        candidatePath = path.join(resolvedDir, finalName);
+                    } catch {
+                        break;
+                    }
+                }
+            }
+
+            await fs.writeFile(candidatePath, "", { encoding: "utf-8", flag: "w" });
+
+            res.writeHead(200, {"Content-Type":"application/json"});
+            res.end(JSON.stringify({ path: candidatePath, name: finalName }));
+        } catch (err) {
+            res.writeHead(400, {"Content-Type":"application/json"});
+            res.end(JSON.stringify({ error: err.message || "Failed to create note" }));
+        }
+        return;
+    }
+
+    if (req.method === "POST" && req.url === "/api/write-text") {
+        try {
+            const body = await readJsonBody(req);
+            const filePath = (body.path || "").trim();
+            const content = typeof body.content === "string" ? body.content : "";
+
+            if (!filePath) {
+                res.writeHead(400, {"Content-Type":"application/json"});
+                res.end(JSON.stringify({ error: "Missing path" }));
+                return;
+            }
+
+            if (path.extname(filePath).toLowerCase() !== ".txt") {
+                res.writeHead(400, {"Content-Type":"application/json"});
+                res.end(JSON.stringify({ error: "Only .txt files supported" }));
+                return;
+            }
+
+            await fs.writeFile(filePath, content, "utf-8");
+            res.writeHead(200, {"Content-Type":"application/json"});
+            res.end(JSON.stringify({ path: filePath, bytes: Buffer.byteLength(content, "utf-8") }));
+        } catch (err) {
+            res.writeHead(500, {"Content-Type":"application/json"});
+            res.end(JSON.stringify({ error: err.message || "Failed to write file" }));
+        }
+        return;
     }
 
     if (req.method === "GET" && req.url.startsWith("/api/list")) {
