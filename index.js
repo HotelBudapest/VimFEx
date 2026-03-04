@@ -735,6 +735,34 @@ function scrollFocusedViewerXY(dx, dy){
   return true;
 }
 
+function scrollPdfToPage(win, pageNumber, smooth = true){
+  if (!win || win.kind !== "viewer") return false;
+  const cache = state.pdfCache.get(win.id);
+  if (!cache?.el) return false;
+  const viewerEl = cache.el.parentElement;
+  if (!viewerEl) return false;
+
+  const pages = cache.el.querySelectorAll(".pdfPage");
+  if (!pages.length) return false;
+  const idx = pageNumber - 1;
+  if (idx < 0 || idx >= pages.length) return false;
+
+  const pageNode = pages[idx];
+  const offset = pageNode.offsetTop - cache.el.offsetTop - 8;
+  const top = Math.max(offset, 0);
+  try{
+    viewerEl.scrollTo({ top, behavior: smooth ? "smooth" : "auto" });
+  } catch {
+    viewerEl.scrollTop = top;
+  }
+  if (win.viewer){
+    win.viewer.currentPage = idx + 1;
+  }
+  const total = win.viewer?.pdfPageCount || pages.length;
+  setGlobalHint(`Page ${idx + 1}/${total}`);
+  return true;
+}
+
 function resizeFocused(dir, delta){
   const focusedId = state.focusId;
   if (!focusedId) return;
@@ -1117,6 +1145,8 @@ async function openFileInWindow(winId, filePath){
     pdfBlob: null,
     pdfZoom: 1.25,
     pdfToken: 0,
+    pdfPageCount: 0,
+    currentPage: 1,
   };
   w.lastViewerPath = filePath;
   delete w.explorer;
@@ -1567,7 +1597,17 @@ async function execCommand(raw){
   }
 
   // Simple commands: q, spl, vspl
-  if (cmd === "q"){
+  if (cmd === "q" || cmd === "q!"){
+    const force = cmd.endsWith("!");
+    const w = getFocusedWin();
+    if (w?.kind === "editor"){
+      if (!force && w.editor?.dirty){
+        commandError("E37: No write since last change (add ! to override)");
+        return;
+      }
+      await exitEditorToExplorer(w);
+      return;
+    }
     removeFocusedWindow();
     return;
   }
@@ -1629,6 +1669,15 @@ async function execCommand(raw){
       await runWriteCommand({ exitAfterSave: true });
     } catch (err){
       commandError(err.message || "Failed to write file");
+    }
+    return;
+  }
+
+  if (name === "p"){
+    try{
+      await runPdfPageCommand(rest);
+    } catch (err){
+      commandError(err.message || "Failed to jump to page");
     }
     return;
   }
@@ -1723,6 +1772,40 @@ async function runWriteCommand(options = {}){
     w.editor.err = err.message || "Failed to save";
     render();
     throw err;
+  }
+}
+
+async function runPdfPageCommand(arg){
+  const raw = (arg || "").trim();
+  if (!raw){
+    throw new Error("E471: Missing page number");
+  }
+  const pageNumber = Number(raw);
+  if (!Number.isInteger(pageNumber) || pageNumber <= 0){
+    throw new Error("E474: Invalid page number");
+  }
+  const w = getFocusedWin();
+  if (!w || w.kind !== "viewer"){
+    throw new Error("E348: Focus a PDF viewer first");
+  }
+  const ct = (w.viewer?.contentType || "").toLowerCase();
+  if (!ct.includes("application/pdf")){
+    throw new Error("E555: :p only works on PDF viewers");
+  }
+  const total = w.viewer?.pdfPageCount || 0;
+  if (total && pageNumber > total){
+    throw new Error(`E556: Only ${total} pages available`);
+  }
+  const cache = state.pdfCache.get(w.id);
+  const rendered = cache?.el ? cache.el.querySelectorAll(".pdfPage").length : 0;
+  if (!rendered){
+    throw new Error("PDF still rendering; try again in a moment");
+  }
+  if (pageNumber > rendered){
+    throw new Error("Requested page is still rendering; try again shortly");
+  }
+  if (!scrollPdfToPage(w, pageNumber, true)){
+    throw new Error("Failed to jump to page");
   }
 }
 
@@ -2012,7 +2095,7 @@ window.addEventListener("keydown", async (ev) => {
   }
 
   if (!ev.ctrlKey && !ev.metaKey && !ev.altKey &&
-      (ev.key === "h" || ev.key === "j" || ev.key === "k" || ev.key === "l")) {
+      (ev.key === "h" || ev.key === "j" || ev.key === "k" || ev.key === "l" || ev.key === "d" || ev.key === "u")) {
 
     const w = getFocusedWin();
     if (!w) return;
@@ -2026,17 +2109,20 @@ window.addEventListener("keydown", async (ev) => {
       return;
     }
 
-    // Viewer: h/j/k/l scroll
+    // Viewer: h/j/k/l scroll, d/u fast-scroll vertically
     if (w.kind === "viewer"){
       ev.preventDefault();
 
       const vStep = 48;  // pixels per j/k
       const hStep = 64;  // pixels per h/l
+      const fastStep = vStep * 5; // faster scroll for d/u
 
       if (ev.key === "j") scrollFocusedViewerXY(0, +vStep);
       if (ev.key === "k") scrollFocusedViewerXY(0, -vStep);
       if (ev.key === "l") scrollFocusedViewerXY(+hStep, 0);
       if (ev.key === "h") scrollFocusedViewerXY(-hStep, 0);
+      if (ev.key === "d") scrollFocusedViewerXY(0, +fastStep);
+      if (ev.key === "u") scrollFocusedViewerXY(0, -fastStep);
 
       return;
     }
@@ -2104,6 +2190,13 @@ async function renderPdfInto(winId, viewerEl, pdfBlob, zoom, cacheKey) {
 
   const arrayBuffer = await pdfBlob.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const w = state.windows.get(winId);
+  if (w?.viewer){
+    w.viewer.pdfPageCount = pdf.numPages;
+    if (!w.viewer.currentPage){
+      w.viewer.currentPage = 1;
+    }
+  }
 
   loading.textContent = `PDF loaded (${pdf.numPages} pages). Rendering…`;
 
